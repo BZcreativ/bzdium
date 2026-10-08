@@ -157,6 +157,7 @@ interface AppState {
 | Command | Args | Returns | Effect |
 |---|---|---|---|
 | `get_state` | — | `AppState` | Snapshot; UI calls once at startup. |
+| `get_recipes` | — | `Recipe[]` | Built-in service catalog for the Add-Service dialog. `Recipe = { name: string, url: string, icon: string }` (icon = single letter). |
 | `add_service` | `{ name: string, url: string, icon: string }` | `AppState` | Validates URL (https only), creates service, saves, activates it. |
 | `update_service` | `{ id: ServiceId, name: string, url: string, icon: string, enabled: boolean }` | `AppState` | Edits service; if URL changed, webview is recreated. |
 | `remove_service` | `{ id: ServiceId }` | `AppState` | Closes webview, deletes service (NOT its session folder). |
@@ -166,6 +167,7 @@ interface AppState {
 | `navigate` | `{ id: ServiceId, action: "back" \| "forward" \| "home" }` | `AppState` | History nav or loads service home URL. |
 | `hibernate_service` | `{ id: ServiceId }` | `AppState` | Closes the webview, marks hibernated. |
 | `wake_service` | `{ id: ServiceId }` | `AppState` | Recreates the webview. |
+| `set_overlay_mode` | `{ open: boolean }` | `null` | While a UI overlay (modal / context menu) is open the UI webview must not be occluded by service webviews (they sit above it in z-order); `open: true` hides all service webviews, `open: false` re-shows the active one. No state change, no event. |
 | `update_settings` | `{ settings: Settings }` | `AppState` | Persists settings, applies side effects (autostart key, hibernation timer). |
 | `report_title` | `{ id: ServiceId, title: string }` | `null` | Called BY service webviews (injected script); updates badge. Does NOT emit state-changed unless the badge count changed. |
 
@@ -175,6 +177,62 @@ re-renders purely from events (plus the initial `get_state`).
 
 UI listens via `window.__TAURI__.event.listen("state-changed", e => render(e.payload))`.
 
+### ACL / remote IPC (Tauri v2 specifics — normative)
+
+Tauri v2 denies **every** app command from non-local origins by default, so the
+badge pipeline needs an explicit app ACL manifest and a remote capability:
+
+- `src-tauri/build.rs` declares all app commands via
+  `tauri_build::Attributes::app_manifest(AppManifest::new().commands(&[..]))`,
+  which autogenerates `allow-<command>` permissions. Note: once an app manifest
+  exists, **local** webviews must also be granted commands via capabilities.
+- `src-tauri/capabilities/default.json` — local capability on window `main`:
+  `core:default` + `allow-*` for all app commands except `report_title`.
+- `src-tauri/capabilities/service-webviews.json` — `local: false`,
+  `remote.urls: ["https://*"]`, webviews `service-*`: ONLY
+  `allow-report-title`. Remote pages can never reach any other command.
+  (`https://*` is a URLPattern that matches every https host; pinned by
+  `src-tauri/tests/remote_pattern.rs`.)
+- Tauri v1's `dangerousRemoteDomainIpcAccess` config field does not exist in
+  v2 and must not be used.
+
+### UI overlay visibility contract
+
+Service webviews are siblings created after the UI webview, so they sit ABOVE
+it in z-order. UI overlays that extend past the 72 px sidebar (modals, context
+menu) would be occluded. Contract: the UI calls `set_overlay_mode` with
+`open: true` whenever any modal or the context menu opens (deduplicated), and
+`open: false` when the last one closes; the backend hides all service webviews
+/ restores the active one. This is a pure view operation.
+
+### Threading & locking contract (normative — violation deadlocks the app)
+
+WebView2 controller creation runs on the event loop with a NESTED message
+pump, and synchronous commands also execute on the event loop thread. If the
+state mutex is held while a webview is created/shown/closed, any sync command
+processed inside the nested pump (e.g. `report_title`, `get_state`) blocks on
+that mutex and the whole app wedges (observed: window "not responding", all
+IPC replies never delivered).
+
+Rules:
+1. Every command that creates or closes webviews is `async fn` (runs off the
+   main thread).
+2. The state mutex is NEVER held across webview operations: mutate + persist
+   + snapshot under the lock, drop the guard, then create/close/show webviews,
+   then emit `state-changed` from the pre-built snapshot (`emit_snapshot`).
+3. Startup activation of the first service runs on a spawned thread, never
+   inside `setup`.
+4. The hibernation task follows the same three-phase pattern (decide+persist
+   locked → close webviews unlocked → emit).
+
+### Single instance
+
+Exactly one bzdium process may run per machine (like Ferdium): two instances
+share the UI webview's WebView2 profile
+(`%LOCALAPPDATA%/com.bzdium.app/EBWebView`) and corrupt each other's IPC,
+ending in an application hang. `tauri-plugin-single-instance` is registered
+first in the builder; a second launch surfaces the existing window and exits.
+
 ### Service webview injection (backend-owned)
 
 Each service webview is created with an initialization script that, every 3 s,
@@ -182,6 +240,16 @@ reads `document.title` and calls
 `window.__TAURI__.core.invoke("report_title", { id: "<service-id>", title })`.
 Badge parsing (Rust side): first match of `/\((\d+)\)/` → that number; title
 starting with `•` or containing `(•)` → count 1; otherwise 0.
+
+### Built-in recipe catalog (normative list)
+
+WhatsApp `https://web.whatsapp.com`, Telegram `https://web.telegram.org`,
+Discord `https://discord.com/app`, Slack `https://app.slack.com`,
+Messenger `https://www.messenger.com`, Gmail `https://mail.google.com`,
+Outlook `https://outlook.live.com`, Google Chat `https://chat.google.com`,
+Teams `https://teams.microsoft.com`, Element `https://app.element.io`,
+X `https://x.com`, Instagram `https://www.instagram.com`,
+LinkedIn `https://www.linkedin.com`. Icon = first letter of name.
 
 ### Window geometry contract
 

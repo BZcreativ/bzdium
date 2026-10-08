@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bzdium</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Sidebar: exactly 72px wide. Nothing else may occupy x >= 72 except fixed overlays. -->
+  <aside id="sidebar">
+    <div id="logo" title="bzdium">
+      <span class="logo-letter">b</span>
+      <span id="logo-badge" class="badge hidden" title="Total unread"></span>
+    </div>
+
+    <nav id="service-list" aria-label="Services"></nav>
+
+    <div class="sidebar-bottom">
+      <button id="add-btn" class="icon-btn" title="Add service" aria-label="Add service">+</button>
+      <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Empty-state welcome panel (overlays the webview area only when there are no services) -->
+  <div id="welcome" class="hidden">
+    <div class="welcome-card">
+      <div class="welcome-logo">b</div>
+      <h1>Welcome to bzdium</h1>
+      <p>All your messengers in one light window.</p>
+      <button id="welcome-add" class="primary-btn">Add your first service</button>
+    </div>
+  </div>
+
+  <!-- Custom context menu for service items -->
+  <div id="context-menu" class="hidden" role="menu"></div>
+
+  <!-- Add-Service modal -->
+  <div id="add-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-labelledby="add-modal-title">
+      <h2 id="add-modal-title">Add service</h2>
+      <div id="recipe-grid" class="recipe-grid"></div>
+      <form id="add-form">
+        <label>Name
+          <input id="add-name" type="text" required maxlength="60" autocomplete="off" placeholder="My service">
+        </label>
+        <label>URL
+          <input id="add-url" type="url" required placeholder="https://example.com" autocomplete="off">
+        </label>
+        <label>Icon letter
+          <input id="add-icon" type="text" maxlength="2" autocomplete="off" placeholder="M">
+        </label>
+        <p class="form-error hidden" id="add-error"></p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" data-close>Cancel</button>
+          <button type="submit" class="primary-btn">Add service</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit-Service modal -->
+  <div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-labelledby="edit-modal-title">
+      <h2 id="edit-modal-title">Edit service</h2>
+      <form id="edit-form">
+        <label>Name
+          <input id="edit-name" type="text" required maxlength="60" autocomplete="off">
+        </label>
+        <label>URL
+          <input id="edit-url" type="url" required autocomplete="off">
+        </label>
+        <label>Icon letter
+          <input id="edit-icon" type="text" maxlength="2" autocomplete="off">
+        </label>
+        <label class="checkbox-label">
+          <input id="edit-enabled" type="checkbox"> Enabled
+        </label>
+        <p class="form-error hidden" id="edit-error"></p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" data-close>Cancel</button>
+          <button type="submit" class="primary-btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-labelledby="settings-modal-title">
+      <h2 id="settings-modal-title">Settings</h2>
+      <form id="settings-form">
+        <label>Hibernation timeout (minutes, 0 = never)
+          <input id="set-hibernation" type="number" min="0" max="1440" step="1">
+        </label>
+        <label class="checkbox-label">
+          <input id="set-tray" type="checkbox"> Minimize to tray
+        </label>
+        <label class="checkbox-label">
+          <input id="set-autostart" type="checkbox"> Start with Windows
+        </label>
+        <label class="checkbox-label">
+          <input id="set-dark" type="checkbox"> Dark UI
+        </label>
+        <p class="form-error hidden" id="settings-error"></p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" data-close>Cancel</button>
+          <button type="submit" class="primary-btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal modal-narrow" role="alertdialog" aria-labelledby="confirm-text">
+      <p id="confirm-text" class="confirm-text"></p>
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="confirm-cancel">Cancel</button>
+        <button type="button" class="danger-btn" id="confirm-ok">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

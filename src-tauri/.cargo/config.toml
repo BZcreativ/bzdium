@@ -1,0 +1,4 @@
+# rustc 1.99 on Windows: LLVM optimize-module threads overflow the default
+# stack on large crates (regex-automata, tauri). Give rustc threads 16 MB.
+[env]
+RUST_MIN_STACK = "16777216"

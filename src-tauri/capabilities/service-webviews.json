@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "service-webviews",
+  "description": "Remote service pages (https) may only report their page title, which drives unread badges. Nothing else is exposed to web content.",
+  "windows": ["main"],
+  "webviews": ["service-*"],
+  "local": false,
+  "remote": {
+    "urls": ["https://*"]
+  },
+  "permissions": ["allow-report-title"]
+}
