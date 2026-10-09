@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
-use crate::state::{emit_state_changed, SharedState};
+use crate::state::SharedState;
 use crate::webviews;
 
 /// How often the hibernation task scans for idle services.
@@ -37,7 +37,7 @@ pub fn start_hibernation_task(app: AppHandle) {
             let idle: Vec<String> = inner
                 .services
                 .iter()
-                .filter(|s| !s.hibernated && active.as_deref() != Some(s.id.as_str()))
+                .filter(|s| s.enabled && !s.hibernated && active.as_deref() != Some(s.id.as_str()))
                 .filter(|s| {
                     inner
                         .last_active
@@ -69,11 +69,13 @@ pub fn start_hibernation_task(app: AppHandle) {
             }
         }
 
-        // Phase 3 (locked): notify the UI.
+        // Phase 3 (locked briefly): snapshot, then notify off-lock.
         {
             let state = app.state::<SharedState>();
             if let Ok(inner) = state.lock() {
-                emit_state_changed(&app, &inner);
+                let snapshot = inner.snapshot();
+                drop(inner);
+                crate::state::emit_snapshot(&app, &snapshot);
             };
         }
     });

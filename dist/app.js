@@ -139,9 +139,11 @@
     logoBadge.textContent = formatBadge(total);
     logoBadge.classList.toggle("hidden", total <= 0);
 
-    // Service list (state.services is already sorted by order).
+    // Service list (state.services is already sorted by order; disabled
+    // services are hidden — they have no webview and cannot be activated).
     serviceList.textContent = "";
     (state.services || []).forEach(function (service) {
+      if (service.enabled === false) return;
       serviceList.appendChild(buildServiceItem(service, state.activeServiceId));
     });
 
@@ -290,9 +292,13 @@
       var rect = btn.getBoundingClientRect();
       var before = e.clientY < rect.top + rect.height / 2;
       var orderedIds = currentState.services.map(function (s) { return s.id; });
-      orderedIds.splice(orderedIds.indexOf(draggedId), 1);
-      var target = orderedIds.indexOf(service.id) + (before ? 0 : 1);
-      orderedIds.splice(target, 0, draggedId);
+      var from = orderedIds.indexOf(draggedId);
+      var to = orderedIds.indexOf(service.id);
+      // A state-changed event may have rebuilt the list mid-drag; if either
+      // id vanished, drop the gesture instead of mangling the order.
+      if (from === -1 || to === -1) { draggedId = null; return; }
+      orderedIds.splice(from, 1);
+      orderedIds.splice(to + (before ? 0 : 1), 0, draggedId);
       draggedId = null;
       cmd("reorder_services", { orderedIds: orderedIds }).catch(function () {});
     });

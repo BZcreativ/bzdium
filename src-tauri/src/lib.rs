@@ -137,7 +137,7 @@ pub fn run() {
                 let inner = state.lock().map_err(|e| e.to_string())?;
                 let mut services = inner.services.clone();
                 services.sort_by_key(|s| s.order);
-                services.first().map(|s| s.id.clone())
+                services.iter().find(|s| s.enabled).map(|s| s.id.clone())
             };
             if let Some(id) = first_id {
                 let app_handle = app.handle().clone();

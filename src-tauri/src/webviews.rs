@@ -172,6 +172,9 @@ pub fn activate(app: &AppHandle, state: &SharedState, id: &str) -> Result<(), St
             .service(id)
             .cloned()
             .ok_or_else(|| format!("unknown service id {id}"))?;
+        if !service.enabled {
+            return Err(format!("{} is disabled — enable it in Edit", service.name));
+        }
         let data_dir = inner.data_dir.clone();
         inner.touch(id);
         if service.hibernated {

@@ -130,7 +130,7 @@ interface Service {
   name: string;
   url: string;           // full https URL, validated
   icon: string;          // emoji char OR 1-2 letter lettermark; UI renders lettermark
-  enabled: boolean;
+  enabled: boolean;         // disabled = hidden from sidebar, never activated, no webview
   order: number;         // 0-based position in sidebar
   hibernated: boolean;   // runtime: webview currently closed
   badgeCount: number;    // runtime: unread count parsed from title
@@ -161,7 +161,7 @@ interface AppState {
 | `get_recipes` | — | `Recipe[]` | Built-in service catalog for the Add-Service dialog. `Recipe = { name: string, url: string, icon: string }` (icon = 1-2 letter lettermark). |
 | `add_service` | `{ name: string, url: string, icon: string }` | `AppState` | Validates URL (https only), creates service, saves, activates it. |
 | `update_service` | `{ id: ServiceId, name: string, url: string, icon: string, enabled: boolean }` | `AppState` | Edits service; if URL changed, webview is recreated. |
-| `remove_service` | `{ id: ServiceId }` | `AppState` | Closes webview, deletes service (NOT its session folder). |
+| `remove_service` | `{ id: ServiceId }` | `AppState` | Closes webview, deletes service AND reclaims its session folder (best-effort — a re-added service always gets a fresh UUID, so the old profile is unrecoverable garbage). |
 | `reorder_services` | `{ orderedIds: ServiceId[] }` | `AppState` | Sets order by array position. |
 | `set_active_service` | `{ id: ServiceId \| null }` | `AppState` | Shows that service's webview (waking it if hibernated), hides others. |
 | `reload_service` | `{ id: ServiceId }` | `AppState` | Reloads the webview (wakes if hibernated). |
@@ -172,8 +172,8 @@ interface AppState {
 | `update_settings` | `{ settings: Settings }` | `AppState` | Persists settings, applies side effects (autostart key, hibernation timer, re-applies webview geometry when `showUrlBar` changed). |
 | `navigate_url` | `{ id: ServiceId, url: string }` | `null` | URL bar "Go": validates https, navigates the service webview (creating it if hibernated). |
 | `export_config` | — | `string \| null` | Native save dialog → writes `{type:"bzdium-config",version:1,exportedAt,settings,services[]}` (services carry id/name/url/icon/enabled/order; runtime fields reset). `null` = user cancelled. Session folders are NOT part of the export. |
-| `import_config` | — | `{ state: AppState, skipped: string[] } \| null` | Native open dialog → validates → REPLACES all services + settings (ids preserved so local sessions reconnect; invalid entries skipped and named in `skipped`), closes all service webviews, activates the first service. `null` = user cancelled. |
-| `report_title` | `{ id: ServiceId, title: string }` | `null` | Called BY service webviews (injected script); updates badge. Does NOT emit state-changed unless the badge count changed. |
+| `import_config` | — | `{ state: AppState, skipped: string[] } \| null` | Native open dialog → validates → REPLACES all services + settings, closes all service webviews, activates the first enabled service. **Ids from the file are accepted only as well-formed hyphenated UUIDs, deduplicated; anything else (traversal paths, junk, duplicates) is replaced with a fresh UUID** — ids become `sessions/<id>` directory names and webview labels, so they must never be attacker-controlled strings. The imported `startWithWindows` value is IGNORED (a config file must not silently flip the HKCU Run key — the current setting is kept). Activation failure logs but never aborts the import. `null` = user cancelled. |
+| `report_title` | `{ id: ServiceId, title: string }` | `null` | Called BY service webviews (injected script); updates badge. **The `id` is bound to the calling webview's label** — a page can only ever report its own service (and the UI webview, label `main`, can never call it). Does NOT emit state-changed unless the badge count changed. Badge counts are capped at 999; totals use saturating addition. |
 
 Every command that returns `AppState` also emits a `state-changed` event
 (payload: `AppState`) on the **UI webview only** after mutating state; the UI

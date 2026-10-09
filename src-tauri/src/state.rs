@@ -91,7 +91,10 @@ impl StateInner {
     pub fn snapshot(&self) -> AppState {
         let mut services = self.services.clone();
         services.sort_by_key(|s| s.order);
-        let total_badge_count = services.iter().map(|s| s.badge_count).sum();
+        let total_badge_count = services
+            .iter()
+            .map(|s| s.badge_count)
+            .fold(0u32, u32::saturating_add);
         AppState {
             services,
             active_service_id: self.active_service_id.clone(),

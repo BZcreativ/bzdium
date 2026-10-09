@@ -180,9 +180,9 @@ pub async fn update_service(
     enabled: bool,
 ) -> Result<AppState, String> {
     let url = validate_https_url(&url)?;
-    let (url_changed, was_hibernated, service, data_dir, is_active, snapshot) = {
+    let (url_changed, was_hibernated, now_disabled, service, data_dir, is_active, snapshot) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
-        let (url_changed, was_hibernated) = {
+        let (url_changed, was_hibernated, now_disabled) = {
             let service = inner
                 .service_mut(&id)
                 .ok_or_else(|| format!("unknown service id {id}"))?;
@@ -190,17 +190,28 @@ pub async fn update_service(
             service.name = name.trim().to_string();
             service.url = url;
             service.icon = icon;
+            let was_enabled = service.enabled;
             service.enabled = enabled;
-            (url_changed, service.hibernated)
+            (url_changed, service.hibernated, was_enabled && !enabled)
         };
+        if now_disabled {
+            // Disabling closes the webview and releases the active tab.
+            inner.last_active.remove(&id);
+            if inner.active_service_id.as_deref() == Some(id.as_str()) {
+                inner.active_service_id = None;
+            }
+        }
         inner.save_services()?;
         let service = inner.service(&id).cloned().expect("checked above");
         let data_dir = inner.data_dir.clone();
         let is_active = inner.active_service_id.as_deref() == Some(id.as_str());
         let snapshot = inner.snapshot();
-        (url_changed, was_hibernated, service, data_dir, is_active, snapshot)
+        (url_changed, was_hibernated, now_disabled, service, data_dir, is_active, snapshot)
     };
-    if url_changed && !was_hibernated {
+    if now_disabled {
+        // Disabled services keep no webview.
+        webviews::close_webview(&app, &id)?;
+    } else if url_changed && !was_hibernated {
         // Recreate the webview at the new URL (off-lock).
         webviews::close_webview(&app, &id)?;
         webviews::create_service_webview(&app, &service, &data_dir, is_active)?;
@@ -218,23 +229,32 @@ pub async fn remove_service(
     state: State<'_, SharedState>,
     id: String,
 ) -> Result<AppState, String> {
-    let snapshot = {
+    let (snapshot, data_dir) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
         let pos = inner
             .services
             .iter()
             .position(|s| s.id == id)
             .ok_or_else(|| format!("unknown service id {id}"))?;
-        // NOTE: the session folder under sessions/<id> is deliberately kept (spec).
         inner.services.remove(pos);
         inner.last_active.remove(&id);
         if inner.active_service_id.as_deref() == Some(id.as_str()) {
             inner.active_service_id = None;
         }
         inner.save_services()?;
-        inner.snapshot()
+        let data_dir = inner.data_dir.clone();
+        (inner.snapshot(), data_dir)
     };
     webviews::close_webview(&app, &id)?;
+    // The session profile is unrecoverable garbage after removal (a re-added
+    // service always gets a fresh UUID), so reclaim it. Best-effort: WebView2
+    // may hold locks on the folder briefly after close.
+    let session_dir = data_dir.join(crate::storage::SESSIONS_DIR).join(&id);
+    if let Err(e) = std::fs::remove_dir_all(&session_dir) {
+        if session_dir.exists() {
+            eprintln!("remove_service: could not reclaim session dir {}: {e}", session_dir.display());
+        }
+    }
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
 }
@@ -283,6 +303,25 @@ pub struct ConfigFile {
 
 pub const CONFIG_TYPE: &str = "bzdium-config";
 pub const CONFIG_VERSION: u32 = 1;
+
+/// Service ids become directory names (`sessions/<id>`) and webview labels,
+/// so ids from an imported file must be strictly controlled: accept ONLY
+/// well-formed hyphenated UUIDs that are not already taken. Anything else
+/// (path separators, `..`, absolute paths, junk, duplicates) is replaced
+/// with a fresh UUID — this kills path traversal via `Path::join` and
+/// session-profile sharing between duplicated services.
+fn normalize_imported_id(raw: &str, seen: &mut std::collections::HashSet<String>) -> String {
+    let t = raw.trim();
+    if t.len() == 36 && Uuid::parse_str(t).is_ok() && seen.insert(t.to_lowercase()) {
+        return t.to_lowercase();
+    }
+    loop {
+        let fresh = Uuid::new_v4().to_string();
+        if seen.insert(fresh.clone()) {
+            return fresh;
+        }
+    }
+}
 
 /// Result of a successful import: the new app state plus the names of
 /// entries that were rejected (invalid URL/name) and skipped.
@@ -378,6 +417,7 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
 
     let mut skipped = Vec::new();
     let mut services = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
     for s in &config.services {
         let url = match validate_https_url(&s.url) {
             Ok(u) => u,
@@ -392,7 +432,7 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
             continue;
         }
         services.push(Service {
-            id: if s.id.trim().is_empty() { Uuid::new_v4().to_string() } else { s.id.clone() },
+            id: normalize_imported_id(&s.id, &mut seen_ids),
             name,
             url,
             icon: s.icon.clone(),
@@ -404,30 +444,37 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
     }
     services.sort_by_key(|s| s.order);
 
-    // Phase 1 (locked): replace state + persist.
-    let (first_id, start_with_windows) = {
+    // Phase 1 (locked): replace state + persist. Imported `startWithWindows`
+    // is deliberately ignored (a config file must not silently flip the
+    // HKCU Run key) — the current value is kept.
+    let first_id = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
-        inner.settings = config.settings;
+        let mut new_settings = config.settings;
+        new_settings.start_with_windows = inner.settings.start_with_windows;
+        inner.settings = new_settings;
         inner.services = services;
         inner.last_active.clear();
         inner.active_service_id = None;
         inner.save_settings()?;
         inner.save_services()?;
-        (
-            inner.services.first().map(|s| s.id.clone()),
-            inner.settings.start_with_windows,
-        )
+        inner
+            .services
+            .iter()
+            .find(|s| s.enabled)
+            .map(|s| s.id.clone())
     };
 
-    // Phase 2 (unlocked): side effects.
-    let _ = crate::autostart::apply(start_with_windows);
+    // Phase 2 (unlocked): side effects. Activation failure must NOT abort
+    // the import (state was already replaced) — log and still notify.
     for (_label, webview) in app.webviews() {
         if webview.label().starts_with("service-") {
             let _ = webview.close();
         }
     }
     if let Some(id) = &first_id {
-        webviews::activate(&app, &state, id)?;
+        if let Err(e) = webviews::activate(&app, &state, id) {
+            eprintln!("import: failed to activate {id}: {e}");
+        }
     }
     let snapshot = state.lock().map_err(|e| e.to_string())?.snapshot();
     emit_snapshot(&app, &snapshot);
@@ -532,5 +579,33 @@ mod tests {
         let s: Settings = serde_json::from_str(old).unwrap();
         assert!(s.show_url_bar);
         assert_eq!(Settings::default().show_url_bar, true);
+    }
+
+    #[test]
+    fn imported_ids_are_uuids_only_and_deduped() {
+        let mut seen = std::collections::HashSet::new();
+        // Well-formed UUID passes through (lowercased).
+        let good = "3F6B2C5E-7A1D-4C9F-9B2E-1D0F8A7C6B5A";
+        let kept = normalize_imported_id(good, &mut seen);
+        assert_eq!(kept, "3f6b2c5e-7a1d-4c9f-9b2e-1d0f8a7c6b5a");
+        // Same id again → deduped to a DIFFERENT uuid.
+        let dup = normalize_imported_id(good, &mut seen);
+        assert_ne!(dup, kept);
+        assert!(Uuid::parse_str(&dup).is_ok());
+        // Traversal / absolute / junk ids are replaced with fresh UUIDs.
+        for evil in [
+            "..\\..\\..\\Users\\me\\AppData",
+            "../../etc",
+            "C:\\Windows\\System32",
+            "",
+            "seed-telegram-0001",
+            "service-x",
+        ] {
+            let id = normalize_imported_id(evil, &mut seen);
+            assert!(Uuid::parse_str(&id).is_ok(), "{evil:?} -> {id}");
+            assert_eq!(id.len(), 36);
+            assert!(!id.contains('\\') && !id.contains('/') && !id.contains(".."));
+            assert_eq!(id.chars().filter(|c| *c == '-').count(), 4);
+        }
     }
 }
