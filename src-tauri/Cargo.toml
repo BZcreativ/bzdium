@@ -1,6 +1,6 @@
 [package]
 name = "bzdium"
-version = "0.1.0"
+version = "0.2.1"
 description = "bzdium — a light multi-messenger (Rust/WebView2 port of the Ferdium concept)"
 edition = "2021"
 rust-version = "1.77"
