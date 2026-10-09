@@ -119,8 +119,70 @@ body {
   justify-content: center;
   font-size: 19px;
   font-weight: 600;
+  letter-spacing: 0.5px;
   transition: border-radius 120ms ease, transform 120ms ease, opacity 120ms ease;
   pointer-events: none;
+}
+
+/* Two-letter lettermarks shrink to fit the circle. */
+.svc-icon[data-two] {
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+/* ---------- URL bar (40px strip right of the sidebar) ---------- */
+
+#url-bar {
+  position: fixed;
+  top: 0;
+  left: 72px;
+  right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 9;
+}
+
+body.no-url-bar #url-bar { display: none; }
+
+#url-input {
+  flex: 1;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: 12px/1 system-ui, "Segoe UI", sans-serif;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#url-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#url-input:disabled { opacity: 0.45; }
+
+#url-go {
+  height: 28px;
+  min-width: 36px;
+  padding: 0 10px;
+  border-radius: 14px;
+}
+
+.config-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 body.light .svc-icon {
@@ -436,3 +498,6 @@ body.light .svc-icon {
 }
 
 .toast.fading { opacity: 0; }
+
+/* Two-letter lettermarks in the recipe grid shrink further (34px circles). */
+.recipe-cell .svc-icon[data-two] { font-size: 11px; }

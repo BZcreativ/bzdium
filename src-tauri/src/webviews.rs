@@ -9,6 +9,9 @@ use crate::state::{emit_snapshot, AppState, Service, SharedState};
 /// Sidebar width in logical pixels (window geometry contract, spec section 6).
 pub const SIDEBAR_WIDTH: f64 = 72.0;
 
+/// Height of the URL bar strip in logical pixels when visible.
+pub const URL_BAR_HEIGHT: f64 = 40.0;
+
 pub const WEBVIEW2_DOWNLOAD_URL: &str =
     "https://developer.microsoft.com/en-us/microsoft-edge/webview2/";
 
@@ -50,17 +53,20 @@ pub fn create_service_webview(
         .join(&service.id);
     fs::create_dir_all(&session_dir).map_err(|e| format!("cannot create session dir: {e}"))?;
 
-    let (width, height) = content_size_logical(&window)?;
+    let (position, size) = service_bounds(app, &window)?;
     let builder = tauri::webview::WebviewBuilder::<Wry>::new(label, WebviewUrl::External(url))
         .data_directory(session_dir)
         .initialization_script(badges::init_script(&service.id))
+        .on_page_load(|webview, payload| {
+            // Drives the URL bar. Deliberately lock-free: label + url only.
+            let owner = webview.app_handle().clone();
+            if let Some(id) = webview.label().strip_prefix("service-") {
+                crate::state::emit_url_changed(&owner, id, payload.url().as_str());
+            }
+        })
         .focused(visible);
     let webview = window
-        .add_child(
-            builder,
-            LogicalPosition::new(SIDEBAR_WIDTH, 0.0),
-            LogicalSize::new((width - SIDEBAR_WIDTH).max(0.0), height),
-        )
+        .add_child(builder, position, size)
         .map_err(webview_error)?;
     if visible {
         let _ = webview.set_focus();
@@ -68,6 +74,30 @@ pub fn create_service_webview(
         let _ = webview.hide();
     }
     Ok(())
+}
+
+/// Top offset of the service webview area: below the URL bar when the
+/// setting is on, flush otherwise. Brief state read — safe on any thread.
+fn content_top_offset(app: &AppHandle) -> f64 {
+    let state: tauri::State<'_, SharedState> = app.state();
+    state
+        .lock()
+        .map(|inner| if inner.settings.show_url_bar { URL_BAR_HEIGHT } else { 0.0 })
+        .unwrap_or(0.0)
+}
+
+/// Position and size (logical px) a service webview should occupy:
+/// right of the sidebar and, when the URL bar is visible, below it.
+fn service_bounds(app: &AppHandle, window: &tauri::Window) -> Result<(LogicalPosition<f64>, LogicalSize<f64>), String> {
+    let (width, height) = content_size_logical(window)?;
+    let offset_y = content_top_offset(app);
+    Ok((
+        LogicalPosition::new(SIDEBAR_WIDTH, offset_y),
+        LogicalSize::new(
+            (width - SIDEBAR_WIDTH).max(1.0),
+            (height - offset_y).max(1.0),
+        ),
+    ))
 }
 
 fn content_size_logical(window: &tauri::Window) -> Result<(f64, f64), String> {
@@ -93,6 +123,7 @@ pub fn show_only(app: &AppHandle, active_id: Option<&str>) -> Result<(), String>
     let window = app
         .get_window(crate::state::UI_WEBVIEW_LABEL)
         .ok_or("main window not found")?;
+    let (position, size) = service_bounds(app, &window)?;
     for webview in window.webviews() {
         let label = webview.label().to_string();
         if !label.starts_with("service-") {
@@ -100,13 +131,8 @@ pub fn show_only(app: &AppHandle, active_id: Option<&str>) -> Result<(), String>
         }
         let is_active = active_id == Some(&label["service-".len()..]);
         if is_active {
-            let (width, height) = content_size_logical(&window)?;
-            webview
-                .set_position(LogicalPosition::new(SIDEBAR_WIDTH, 0.0))
-                .map_err(|e| e.to_string())?;
-            webview
-                .set_size(LogicalSize::new((width - SIDEBAR_WIDTH).max(0.0), height))
-                .map_err(|e| e.to_string())?;
+            webview.set_position(position).map_err(|e| e.to_string())?;
+            webview.set_size(size).map_err(|e| e.to_string())?;
             webview.show().map_err(|e| e.to_string())?;
             let _ = webview.set_focus();
         } else {
@@ -117,20 +143,20 @@ pub fn show_only(app: &AppHandle, active_id: Option<&str>) -> Result<(), String>
 }
 
 /// Re-applies the geometry contract to every open service webview
-/// (called on window resize).
+/// (called on window resize and after URL-bar toggles).
 pub fn sync_bounds(app: &AppHandle) {
     let Some(window) = app.get_window(crate::state::UI_WEBVIEW_LABEL) else {
         return;
     };
-    let Ok((width, height)) = content_size_logical(&window) else {
+    let Ok((position, size)) = service_bounds(app, &window) else {
         return;
     };
     for webview in window.webviews() {
         if !webview.label().starts_with("service-") {
             continue;
         }
-        let _ = webview.set_position(LogicalPosition::new(SIDEBAR_WIDTH, 0.0));
-        let _ = webview.set_size(LogicalSize::new((width - SIDEBAR_WIDTH).max(0.0), height));
+        let _ = webview.set_position(position);
+        let _ = webview.set_size(size);
     }
 }
 
@@ -263,6 +289,36 @@ pub async fn navigate(
     }
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
+}
+
+/// Navigates a service webview to an explicit https URL (URL bar "Go").
+#[tauri::command]
+pub async fn navigate_url(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    id: String,
+    url: String,
+) -> Result<(), String> {
+    let url = crate::services::validate_https_url(&url)?;
+    let (service, data_dir, is_active) = {
+        let mut inner = state.lock().map_err(|e| e.to_string())?;
+        let service = inner
+            .service(&id)
+            .cloned()
+            .ok_or_else(|| format!("unknown service id {id}"))?;
+        let data_dir = inner.data_dir.clone();
+        inner.touch(&id);
+        let is_active = inner.active_service_id.as_deref() == Some(id.as_str());
+        (service, data_dir, is_active)
+    };
+    if app.get_webview(&label_for(&id)).is_none() {
+        create_service_webview(&app, &service, &data_dir, is_active)?;
+    }
+    if let Some(webview) = app.get_webview(&label_for(&id)) {
+        let parsed = url.parse().map_err(|e| format!("invalid URL: {e}"))?;
+        webview.navigate(parsed).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// UI overlays (modals, context menu) live in the UI webview, which sits

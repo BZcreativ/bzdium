@@ -22,6 +22,9 @@ fn main() {
             "hibernate_service",
             "wake_service",
             "set_overlay_mode",
+            "navigate_url",
+            "export_config",
+            "import_config",
             "report_title",
         ])),
     )

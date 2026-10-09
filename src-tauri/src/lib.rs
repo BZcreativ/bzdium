@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager, State, WindowEvent};
 
-use state::{emit_state_changed, AppState, Settings, SharedState, StateInner};
+use state::{emit_snapshot, AppState, Settings, SharedState, StateInner};
 
 #[tauri::command]
 fn get_state(state: State<'_, SharedState>) -> Result<AppState, String> {
@@ -36,7 +36,10 @@ fn update_settings(
     inner.save_settings()?;
     autostart::apply(inner.settings.start_with_windows)?;
     let snapshot = inner.snapshot();
-    emit_state_changed(&app, &inner);
+    drop(inner);
+    // The URL-bar toggle changes service webview geometry — re-apply it.
+    webviews::sync_bounds(&app);
+    emit_snapshot(&app, &snapshot);
     Ok(snapshot)
 }
 
@@ -57,6 +60,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(initial_state))
         .invoke_handler(tauri::generate_handler![
             get_state,
@@ -67,9 +71,12 @@ pub fn run() {
             services::update_service,
             services::remove_service,
             services::reorder_services,
+            services::export_config,
+            services::import_config,
             webviews::set_active_service,
             webviews::reload_service,
             webviews::navigate,
+            webviews::navigate_url,
             webviews::hibernate_service,
             webviews::wake_service,
             webviews::set_overlay_mode,

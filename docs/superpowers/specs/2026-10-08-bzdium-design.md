@@ -129,7 +129,7 @@ interface Service {
   id: ServiceId;
   name: string;
   url: string;           // full https URL, validated
-  icon: string;          // emoji char OR single letter; UI renders lettermark
+  icon: string;          // emoji char OR 1-2 letter lettermark; UI renders lettermark
   enabled: boolean;
   order: number;         // 0-based position in sidebar
   hibernated: boolean;   // runtime: webview currently closed
@@ -140,6 +140,7 @@ interface Settings {
   hibernationMinutes: number;   // 0 = never hibernate; default 30
   minimizeToTray: boolean;      // default true
   startWithWindows: boolean;    // default false
+  showUrlBar: boolean;          // default true; hides/shows the URL bar strip
   darkUi: boolean;              // default true
 }
 
@@ -157,7 +158,7 @@ interface AppState {
 | Command | Args | Returns | Effect |
 |---|---|---|---|
 | `get_state` | — | `AppState` | Snapshot; UI calls once at startup. |
-| `get_recipes` | — | `Recipe[]` | Built-in service catalog for the Add-Service dialog. `Recipe = { name: string, url: string, icon: string }` (icon = single letter). |
+| `get_recipes` | — | `Recipe[]` | Built-in service catalog for the Add-Service dialog. `Recipe = { name: string, url: string, icon: string }` (icon = 1-2 letter lettermark). |
 | `add_service` | `{ name: string, url: string, icon: string }` | `AppState` | Validates URL (https only), creates service, saves, activates it. |
 | `update_service` | `{ id: ServiceId, name: string, url: string, icon: string, enabled: boolean }` | `AppState` | Edits service; if URL changed, webview is recreated. |
 | `remove_service` | `{ id: ServiceId }` | `AppState` | Closes webview, deletes service (NOT its session folder). |
@@ -168,7 +169,10 @@ interface AppState {
 | `hibernate_service` | `{ id: ServiceId }` | `AppState` | Closes the webview, marks hibernated. |
 | `wake_service` | `{ id: ServiceId }` | `AppState` | Recreates the webview. |
 | `set_overlay_mode` | `{ open: boolean }` | `null` | While a UI overlay (modal / context menu) is open the UI webview must not be occluded by service webviews (they sit above it in z-order); `open: true` hides all service webviews, `open: false` re-shows the active one. No state change, no event. |
-| `update_settings` | `{ settings: Settings }` | `AppState` | Persists settings, applies side effects (autostart key, hibernation timer). |
+| `update_settings` | `{ settings: Settings }` | `AppState` | Persists settings, applies side effects (autostart key, hibernation timer, re-applies webview geometry when `showUrlBar` changed). |
+| `navigate_url` | `{ id: ServiceId, url: string }` | `null` | URL bar "Go": validates https, navigates the service webview (creating it if hibernated). |
+| `export_config` | — | `string \| null` | Native save dialog → writes `{type:"bzdium-config",version:1,exportedAt,settings,services[]}` (services carry id/name/url/icon/enabled/order; runtime fields reset). `null` = user cancelled. Session folders are NOT part of the export. |
+| `import_config` | — | `{ state: AppState, skipped: string[] } \| null` | Native open dialog → validates → REPLACES all services + settings (ids preserved so local sessions reconnect; invalid entries skipped and named in `skipped`), closes all service webviews, activates the first service. `null` = user cancelled. |
 | `report_title` | `{ id: ServiceId, title: string }` | `null` | Called BY service webviews (injected script); updates badge. Does NOT emit state-changed unless the badge count changed. |
 
 Every command that returns `AppState` also emits a `state-changed` event
@@ -176,6 +180,24 @@ Every command that returns `AppState` also emits a `state-changed` event
 re-renders purely from events (plus the initial `get_state`).
 
 UI listens via `window.__TAURI__.event.listen("state-changed", e => render(e.payload))`.
+
+Events (Rust → UI webview only):
+
+- `state-changed` — payload `AppState` (above).
+- `url-changed` — payload `{ id: ServiceId, url: string }`, emitted from each
+  service webview's `on_page_load` hook (Started and Finished) to drive the
+  URL bar. The hook is lock-free by design.
+
+### URL bar
+
+- 40 px strip fixed at `top:0; left:72px` in the UI webview; hidden via
+  `body.no-url-bar` when `settings.showUrlBar` is false.
+- Input shows the active service's current URL (from `url-changed`, falling
+  back to the service's home URL); disabled when no active service. While the
+  input is focused, URL events do not clobber typing. Enter/Go →
+  `navigate_url` (auto-prefixes `https://`); Esc → blur + restore.
+- Rust re-applies service webview geometry whenever the toggle changes
+  (`update_settings` calls `sync_bounds`).
 
 ### ACL / remote IPC (Tauri v2 specifics — normative)
 
@@ -243,17 +265,29 @@ starting with `•` or containing `(•)` → count 1; otherwise 0.
 
 ### Built-in recipe catalog (normative list)
 
-WhatsApp `https://web.whatsapp.com`, Telegram `https://web.telegram.org`,
-Discord `https://discord.com/app`, Slack `https://app.slack.com`,
-Messenger `https://www.messenger.com`, Gmail `https://mail.google.com`,
-Outlook `https://outlook.live.com`, Google Chat `https://chat.google.com`,
-Teams `https://teams.microsoft.com`, Element `https://app.element.io`,
-X `https://x.com`, Instagram `https://www.instagram.com`,
-LinkedIn `https://www.linkedin.com`. Icon = first letter of name.
+60 entries: the popular slice of Ferdium's recipe store that works as a plain
+web client (per-service JS hacks are deliberately not ported). Icon rule:
+**two-letter lettermark** — first letters of the first two words
+("Google Chat" → "GC"), else first two letters of the word ("Telegram" → "TE").
+
+Messaging: WhatsApp, Telegram, Discord, Slack, Messenger, Google Chat, Teams,
+Teams Personal, Element, Mattermost, Rocket.Chat, Zulip, Wire, Threema Web,
+WeChat, GroupMe, IRCCloud, Skype, Steam Chat, Zoom.
+Mail: Gmail, Outlook, Outlook Work, Proton Mail, Proton Calendar, Tuta,
+Fastmail, Hey, Yahoo Mail.
+Social: X, Instagram, LinkedIn, Facebook, Reddit (old.reddit.com), Mastodon,
+Bluesky, TikTok, Pinterest, Twitch, YouTube.
+AI: ChatGPT, Claude, Gemini, Copilot, Perplexity.
+Productivity: Notion, Google Calendar/Keep/Drive/Docs/Photos/Voice, OneDrive,
+Dropbox, Trello, Asana, Todoist, TickTick, Feedly, Bitwarden Vault.
+
+(Exact name→URL pairs are pinned by the `recipe_catalog_matches_spec` test.)
 
 ### Window geometry contract
 
-- Sidebar width: **72 px** constant. Window default size 1280×800.
-- Active service webview bounds: `{ x: 72, y: 0, width: winW - 72, height: winH }`
+- Sidebar width: **72 px** constant. URL bar strip: **40 px** when
+  `settings.showUrlBar` is true. Window default size 1280×800.
+- Active service webview bounds:
+  `{ x: 72, y: showUrlBar ? 40 : 0, width: winW - 72, height: winH - (showUrlBar ? 40 : 0) }`
   in logical pixels; hidden services get `set_visible(false)` (bounds retained).
-- Rust updates bounds on every window resize event.
+- Rust updates bounds on every window resize event and on URL-bar toggles.

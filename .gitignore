@@ -1,3 +1,5 @@
 .mimosa/
 portable-test/
 guitest/
+.zcode/
+bzdium-portable/

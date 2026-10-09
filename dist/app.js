@@ -18,7 +18,7 @@
       { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 }
     ],
     activeServiceId: "demo-1",
-    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, darkUi: true },
+    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true },
     totalBadgeCount: 15,
     dataDir: "demo"
   };
@@ -34,6 +34,8 @@
   function mockInvoke(name, args) {
     if (name === "get_recipes") return Promise.resolve(mockRecipes);
     if (name === "get_state") return Promise.resolve(mockState);
+    if (name === "export_config") return Promise.resolve(null);
+    if (name === "import_config") return Promise.resolve(null);
     // Mutate the demo state a little so interactions are visible in a browser.
     if (name === "set_active_service") mockState.activeServiceId = args.id;
     if (name === "hibernate_service" || name === "wake_service") {
@@ -89,9 +91,19 @@
 
   function serviceLetter(service) {
     var icon = (service.icon || "").trim();
-    if (icon) return Array.from(icon)[0].toUpperCase();
-    var name = (service.name || "?").trim();
-    return Array.from(name)[0].toUpperCase();
+    if (icon) return icon.toUpperCase();
+    return initials(service.name || "?");
+  }
+
+  /* Two-letter lettermark: first letters of the first two words, else the
+   * first two letters of the single word. Mirrors services.rs `initials`. */
+  function initials(name) {
+    var words = String(name).trim().split(/\s+/).filter(Boolean);
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase();
+    }
+    var letters = String(name).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2);
+    return letters.toUpperCase();
   }
 
   function applyTheme(darkUi) {
@@ -135,6 +147,8 @@
 
     // Empty state.
     welcome.classList.toggle("hidden", (state.services || []).length !== 0);
+
+    refreshUrlBar();
   }
 
   function buildServiceItem(service, activeServiceId) {
@@ -149,7 +163,9 @@
 
     var icon = document.createElement("span");
     icon.className = "svc-icon";
-    icon.textContent = serviceLetter(service);
+    var letters = serviceLetter(service);
+    icon.textContent = letters;
+    if (letters.length > 1) icon.setAttribute("data-two", "");
     btn.appendChild(icon);
 
     if (service.badgeCount > 0) {
@@ -346,7 +362,7 @@
 
   function defaultIconFor(name) {
     var n = (name || "").trim();
-    return n ? Array.from(n)[0].toUpperCase() : "";
+    return n ? initials(n) : "";
   }
 
   function loadRecipes() {
@@ -369,7 +385,9 @@
 
       var icon = document.createElement("span");
       icon.className = "svc-icon";
-      icon.textContent = (recipe.icon || defaultIconFor(recipe.name) || "?").toUpperCase();
+      var mark = (recipe.icon || defaultIconFor(recipe.name) || "?").toUpperCase();
+      icon.textContent = mark;
+      if (mark.length > 1) icon.setAttribute("data-two", "");
       cell.appendChild(icon);
 
       var name = document.createElement("span");
@@ -468,6 +486,7 @@
     $("set-hibernation").value = (typeof s.hibernationMinutes === "number") ? s.hibernationMinutes : 30;
     $("set-tray").checked = s.minimizeToTray !== false;
     $("set-autostart").checked = !!s.startWithWindows;
+    $("set-urlbar").checked = s.showUrlBar !== false;
     $("set-dark").checked = s.darkUi !== false;
     $("settings-error").classList.add("hidden");
     openModal("settings-modal");
@@ -488,10 +507,36 @@
         hibernationMinutes: minutes,
         minimizeToTray: $("set-tray").checked,
         startWithWindows: $("set-autostart").checked,
+        showUrlBar: $("set-urlbar").checked,
         darkUi: $("set-dark").checked
       }
     }).then(function () { closeModal("settings-modal"); })
       .catch(function () {});
+  });
+
+  /* ----- Export / import configuration ----- */
+
+  $("export-config-btn").addEventListener("click", function () {
+    cmd("export_config").then(function (path) {
+      if (path) toast("Configuration exported to " + path);
+    }).catch(function () {});
+  });
+
+  $("import-config-btn").addEventListener("click", function () {
+    closeModal("settings-modal");
+    openConfirm(
+      "Import a configuration file? This REPLACES all current services and settings (saved sessions are kept).",
+      function () {
+        cmd("import_config").then(function (outcome) {
+          if (!outcome) return; // cancelled file picker
+          if (outcome.skipped && outcome.skipped.length) {
+            toast("Imported with skipped entries: " + outcome.skipped.join(", "));
+          } else {
+            toast("Configuration imported.");
+          }
+        }).catch(function () {});
+      }
+    );
   });
 
   /* ---------------- Global listeners ---------------- */
@@ -511,11 +556,72 @@
     }
   });
 
+  /* ---------------- URL bar ---------------- */
+
+  var urlBar = $("url-bar");
+  var urlInput = $("url-input");
+  var urlGo = $("url-go");
+  var currentUrls = {};       // service id -> last reported url
+  var urlEditing = false;
+
+  function refreshUrlBar() {
+    if (!currentState) return;
+    var show = !!(currentState.settings && currentState.settings.showUrlBar);
+    document.body.classList.toggle("no-url-bar", !show);
+    var activeId = currentState.activeServiceId;
+    var enabled = !!activeId;
+    urlInput.disabled = !enabled;
+    urlGo.disabled = !enabled;
+    if (!urlEditing) {
+      urlInput.value = (activeId && currentUrls[activeId]) ||
+        (activeId && (serviceById(activeId) || {}).url) || "";
+    }
+  }
+
+  function serviceById(id) {
+    if (!currentState) return null;
+    for (var i = 0; i < (currentState.services || []).length; i++) {
+      if (currentState.services[i].id === id) return currentState.services[i];
+    }
+    return null;
+  }
+
+  function submitUrl() {
+    if (!currentState || !currentState.activeServiceId) return;
+    var raw = urlInput.value.trim();
+    if (raw && !/^https?:\/\//i.test(raw)) raw = "https://" + raw;
+    var u;
+    try { u = new URL(raw); } catch (e) { toast("Enter a valid URL."); return; }
+    if (u.protocol !== "https:") { toast("URL must start with https://"); return; }
+    cmd("navigate_url", { id: currentState.activeServiceId, url: u.href }).catch(function () {});
+    urlInput.blur();
+  }
+
+  urlInput.addEventListener("focus", function () { urlEditing = true; });
+  urlInput.addEventListener("blur", function () {
+    urlEditing = false;
+    refreshUrlBar();
+  });
+  urlInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); submitUrl(); }
+    else if (e.key === "Escape") { urlInput.blur(); }
+  });
+  urlGo.addEventListener("click", submitUrl);
+
   /* ---------------- Startup ---------------- */
 
   if (hasTauri) {
     tauri.event.listen("state-changed", function (e) { render(e.payload); })
-      .then(function () { return cmd("get_state"); })
+      .catch(function () {});
+    tauri.event.listen("url-changed", function (e) {
+      if (e.payload && e.payload.id) {
+        currentUrls[e.payload.id] = e.payload.url;
+        if (!urlEditing && currentState && currentState.activeServiceId === e.payload.id) {
+          urlInput.value = e.payload.url;
+        }
+      }
+    }).catch(function () {});
+    cmd("get_state")
       .then(function (state) { render(state); })
       .catch(function () {});
   } else {

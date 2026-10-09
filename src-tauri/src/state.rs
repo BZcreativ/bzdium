@@ -6,6 +6,7 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 
 pub const EVENT_STATE_CHANGED: &str = "state-changed";
+pub const EVENT_URL_CHANGED: &str = "url-changed";
 pub const UI_WEBVIEW_LABEL: &str = "main";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -23,6 +24,10 @@ pub struct Service {
     pub badge_count: u32,
 }
 
+fn default_show_url_bar() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -30,6 +35,9 @@ pub struct Settings {
     pub minimize_to_tray: bool,
     pub start_with_windows: bool,
     pub dark_ui: bool,
+    /// Older settings.json files predate this field; default to visible.
+    #[serde(default = "default_show_url_bar")]
+    pub show_url_bar: bool,
 }
 
 impl Default for Settings {
@@ -39,6 +47,7 @@ impl Default for Settings {
             minimize_to_tray: true,
             start_with_windows: false,
             dark_ui: true,
+            show_url_bar: true,
         }
     }
 }
@@ -124,5 +133,24 @@ pub fn emit_state_changed(app: &AppHandle, inner: &StateInner) {
 pub fn emit_snapshot(app: &AppHandle, snapshot: &AppState) {
     if let Err(e) = app.emit_to(UI_WEBVIEW_LABEL, EVENT_STATE_CHANGED, snapshot) {
         eprintln!("failed to emit {EVENT_STATE_CHANGED}: {e}");
+    }
+}
+
+/// Notifies the UI that a service webview navigated (drives the URL bar).
+/// Safe to call from the `on_page_load` hook: touches no state.
+pub fn emit_url_changed(app: &AppHandle, service_id: &str, url: &str) {
+    use serde::Serialize;
+    #[derive(Serialize, Clone)]
+    #[serde(rename_all = "camelCase")]
+    struct Payload<'a> {
+        id: &'a str,
+        url: &'a str,
+    }
+    if let Err(e) = app.emit_to(
+        UI_WEBVIEW_LABEL,
+        EVENT_URL_CHANGED,
+        Payload { id: service_id, url },
+    ) {
+        eprintln!("failed to emit {EVENT_URL_CHANGED}: {e}");
     }
 }

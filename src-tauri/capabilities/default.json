@@ -18,6 +18,9 @@
     "allow-navigate",
     "allow-hibernate-service",
     "allow-wake-service",
-    "allow-set-overlay-mode"
+    "allow-set-overlay-mode",
+    "allow-navigate-url",
+    "allow-export-config",
+    "allow-import-config"
   ]
 }

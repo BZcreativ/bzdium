@@ -29,6 +29,13 @@
     </div>
   </aside>
 
+  <!-- URL bar (hidden via body.no-url-bar when the setting is off) -->
+  <div id="url-bar">
+    <input id="url-input" type="url" spellcheck="false" autocomplete="off"
+           placeholder="https://" aria-label="Service URL">
+    <button id="url-go" class="ghost-btn" title="Go" aria-label="Go to URL">→</button>
+  </div>
+
   <!-- Empty-state welcome panel (overlays the webview area only when there are no services) -->
   <div id="welcome" class="hidden">
     <div class="welcome-card">
@@ -107,6 +114,9 @@
           <input id="set-autostart" type="checkbox"> Start with Windows
         </label>
         <label class="checkbox-label">
+          <input id="set-urlbar" type="checkbox"> Show address bar
+        </label>
+        <label class="checkbox-label">
           <input id="set-dark" type="checkbox"> Dark UI
         </label>
         <p class="form-error hidden" id="settings-error"></p>
@@ -115,6 +125,10 @@
           <button type="submit" class="primary-btn">Save</button>
         </div>
       </form>
+      <div class="config-actions">
+        <button type="button" id="export-config-btn" class="ghost-btn">Export configuration…</button>
+        <button type="button" id="import-config-btn" class="ghost-btn">Import configuration…</button>
+      </div>
     </div>
   </div>
 
