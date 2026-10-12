@@ -22,6 +22,9 @@
     "allow-navigate-url",
     "allow-export-config",
     "allow-import-config",
-    "allow-open-devtools"
+    "allow-open-devtools",
+    "allow-pick-service-icon",
+    "allow-reset-service-icon",
+    "allow-get-service-icon"
   ]
 }

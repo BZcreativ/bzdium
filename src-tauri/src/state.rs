@@ -18,6 +18,14 @@ pub struct Service {
     pub icon: String,
     pub enabled: bool,
     pub order: u32,
+    /// Brand icon slug (dist/assets/icons/<slug>.svg); None -> monogram.
+    /// Old services.json files predate this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_id: Option<String>,
+    /// Uploaded custom icon: file name inside <dataDir>/icons/. Takes
+    /// precedence over icon_id. Old services.json files predate this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_icon: Option<String>,
     #[serde(default)]
     pub hibernated: bool,
     #[serde(default)]

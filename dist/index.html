@@ -65,6 +65,7 @@
         <label>Icon letter
           <input id="add-icon" type="text" maxlength="2" autocomplete="off" placeholder="M">
         </label>
+        <input id="add-icon-id" type="hidden" value="">
         <p class="form-error hidden" id="add-error"></p>
         <div class="modal-actions">
           <button type="button" class="ghost-btn" data-close>Cancel</button>
@@ -79,6 +80,14 @@
     <div class="modal" role="dialog" aria-labelledby="edit-modal-title">
       <h2 id="edit-modal-title">Edit service</h2>
       <form id="edit-form">
+        <div class="icon-editor">
+          <div id="edit-icon-preview" class="icon-preview" aria-live="polite"></div>
+          <div class="icon-editor-actions">
+            <button type="button" id="edit-icon-upload" class="ghost-btn">Change icon…</button>
+            <button type="button" id="edit-icon-reset" class="ghost-btn">Reset to default icon</button>
+            <p class="icon-editor-hint">PNG, JPG, WebP or SVG · max 256 KB</p>
+          </div>
+        </div>
         <label>Name
           <input id="edit-name" type="text" required maxlength="60" autocomplete="off">
         </label>

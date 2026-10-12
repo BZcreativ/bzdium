@@ -112,26 +112,59 @@ body {
   padding: 0;
 }
 
+/* Service icons: one 44px container, three fill modes (monogram / brand
+ * glyph on brand color / custom image). All flex-centered, squircle morphs
+ * on hover/active kept subtle. */
+
 .svc-icon {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: hsl(var(--hue, 260), 55%, 70%);
-  color: #1e1e24;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  overflow: hidden;
+  flex: 0 0 auto;
   transition: border-radius 120ms ease, transform 120ms ease, opacity 120ms ease;
   pointer-events: none;
 }
 
-/* Two-letter lettermarks shrink to fit the circle. */
-.svc-icon[data-two] {
-  font-size: 13px;
-  letter-spacing: 0;
+/* Monogram fallback: tuned per length so 1-3 chars stay balanced. */
+.svc-icon-mono {
+  background: hsl(var(--hue, 230), 42%, 62%);
+  color: #10122b;
+  font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.svc-icon-mono[data-len="1"] { font-size: 19px; }
+.svc-icon-mono[data-len="2"] { font-size: 14px; letter-spacing: 0.01em; }
+.svc-icon-mono[data-len="3"] { font-size: 11px; letter-spacing: 0; }
+
+/* Brand icon: white glyph on the brand color (classic favicon chip);
+ * legible on both themes, no filters touching official colors. */
+.svc-icon-brand {
+  background: var(--brand, #347cff);
+}
+.svc-icon-brand img {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Custom uploaded icon: transparent-safe, contained (never cropped). */
+.svc-icon-custom {
+  background: var(--bg-raised);
+}
+.svc-icon-custom img {
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+  display: block;
 }
 
 /* ---------- URL bar (40px strip right of the sidebar) ---------- */
@@ -199,9 +232,16 @@ body.no-url-bar #url-bar { display: none; }
   -webkit-user-select: text;
 }
 
-body.light .svc-icon {
-  background: hsl(var(--hue, 260), 50%, 44%);
+body.light .svc-icon-mono {
+  background: hsl(var(--hue, 230), 46%, 52%);
   color: #fff;
+}
+body.light .svc-icon-custom {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+body.light .svc-icon-brand {
+  /* brand chip already carries its own color; nothing to adjust */
 }
 
 .svc-item:hover .svc-icon { border-radius: 32%; }
@@ -472,7 +512,12 @@ body.light .welcome-wordmark-light { display: block; }
   background: var(--bg-hover);
 }
 
-.recipe-cell .svc-icon { width: 34px; height: 34px; font-size: 15px; }
+.recipe-cell .svc-icon { width: 34px; height: 34px; }
+.recipe-cell .svc-icon-mono[data-len="1"] { font-size: 15px; }
+.recipe-cell .svc-icon-mono[data-len="2"] { font-size: 11px; }
+.recipe-cell .svc-icon-mono[data-len="3"] { font-size: 9px; }
+.recipe-cell .svc-icon-brand img,
+.recipe-cell .svc-icon-custom img { padding: 8px; }
 
 .recipe-name {
   font-size: 10px;
@@ -511,5 +556,42 @@ body.light .welcome-wordmark-light { display: block; }
 
 .toast.fading { opacity: 0; }
 
-/* Two-letter lettermarks in the recipe grid shrink further (34px circles). */
-.recipe-cell .svc-icon[data-two] { font-size: 11px; }
+/* Icon editor (Edit-service modal) */
+.icon-editor {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.icon-preview {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+}
+.icon-preview .svc-icon { width: 48px; height: 48px; }
+
+.icon-editor-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.icon-editor-hint {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Keyboard focus — visible, brand accent, never on mouse click. */
+.svc-item:focus-visible,
+button:focus-visible,
+#url-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}

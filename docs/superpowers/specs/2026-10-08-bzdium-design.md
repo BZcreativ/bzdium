@@ -220,6 +220,29 @@ badge pipeline needs an explicit app ACL manifest and a remote capability:
 - Tauri v1's `dangerousRemoteDomainIpcAccess` config field does not exist in
   v2 and must not be used.
 
+### Service icons (precedence + storage)
+
+Resolution order (single helper, mirrored in `dist/app.js resolveServiceIcon`):
+
+1. **Custom uploaded icon** — `service.customIcon` = file name in
+   `<dataDir>/icons/` (never base64 in config). Served to the UI as a data
+   URL by `get_service_icon`; missing/corrupt file falls back silently.
+2. **Brand icon** — `service.iconId` slug → `dist/assets/icons/<slug>.svg`
+   (Simple Icons glyphs, CC0, white on the brand color from
+   `assets/icons/manifest.json`). Assigned at add-time from the recipe or
+   resolved from the URL host (`brand_slug_for_url`); re-resolved when a
+   service's URL is edited (unless a custom icon exists); backfilled for
+   pre-icon-system configs at load. Slugs are validated `[a-z0-9-]{1,32}`
+   everywhere they cross a boundary (add, import).
+3. **Monogram** — 1–3 letter lettermark, sized per `data-len`.
+
+Commands: `pick_service_icon` (native picker → magic-byte sniff
+png/jpg/webp/svg, ≤256 KB, atomic write, replaces any prior file),
+`reset_service_icon` (clears custom → falls back to 2/3),
+`get_service_icon` (data URL or null). Uploaded SVGs are only ever rendered
+via `<img>` (no script execution context). Export carries `iconId` only;
+custom icon files are local and do not travel with the export.
+
 ### Branding
 
 Assets live in `branding-src/` (source of truth) and are consumed as:

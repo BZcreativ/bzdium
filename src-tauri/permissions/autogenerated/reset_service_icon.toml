@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reset-service-icon"
+description = "Enables the reset_service_icon command without any pre-configured scope."
+commands.allow = ["reset_service_icon"]
+
+[[permission]]
+identifier = "deny-reset-service-icon"
+description = "Denies the reset_service_icon command without any pre-configured scope."
+commands.deny = ["reset_service_icon"]

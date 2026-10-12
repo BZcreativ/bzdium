@@ -79,10 +79,15 @@ fn temp_path_for(path: &Path) -> PathBuf {
 /// Atomic write: write to a temp file in the same directory, fsync, then
 /// rename over the destination (on Windows std rename replaces existing files).
 pub fn atomic_write(path: &Path, contents: &str) -> io::Result<()> {
+    atomic_write_bytes(path, contents.as_bytes())
+}
+
+/// Binary variant of [`atomic_write`] (image files etc.).
+pub fn atomic_write_bytes(path: &Path, contents: &[u8]) -> io::Result<()> {
     let tmp = temp_path_for(path);
     {
         let mut f = fs::File::create(&tmp)?;
-        f.write_all(contents.as_bytes())?;
+        f.write_all(contents)?;
         f.sync_all()?;
     }
     fs::rename(&tmp, path)?;
@@ -126,11 +131,16 @@ pub fn load_settings(data_dir: &Path) -> Settings {
     load_or_default(&data_dir.join(SETTINGS_FILE))
 }
 
-/// Loads configured services. Runtime fields (`badge_count`) are reset.
+/// Loads configured services. Runtime fields (`badge_count`) are reset, and
+/// services from older config files (pre-icon system) get their brand icon
+/// slug backfilled from their URL — additive only, never overwrites.
 pub fn load_services(data_dir: &Path) -> Vec<Service> {
     let mut services: Vec<Service> = load_or_default(&data_dir.join(SERVICES_FILE));
     for s in &mut services {
         s.badge_count = 0;
+        if s.icon_id.is_none() {
+            s.icon_id = crate::services::brand_slug_for_url(&s.url);
+        }
     }
     services.sort_by_key(|s| s.order);
     services
@@ -183,12 +193,15 @@ mod tests {
             icon: "W".to_string(),
             enabled: true,
             order: 2,
+            icon_id: Some("whatsapp".to_string()),
+            custom_icon: Some("3f6b2c5e-7a1d-4c9f-9b2e-1d0f8a7c6b5a.png".to_string()),
             hibernated: true,
             badge_count: 4,
         };
         let json = serde_json::to_string(&service).unwrap();
         assert!(json.contains("\"badgeCount\":4"));
         assert!(json.contains("\"hibernated\":true"));
+        assert!(json.contains("\"iconId\":\"whatsapp\""));
         let back: Service = serde_json::from_str(&json).unwrap();
         assert_eq!(service, back);
 
@@ -197,6 +210,8 @@ mod tests {
         let parsed: Service = serde_json::from_str(minimal).unwrap();
         assert!(!parsed.hibernated);
         assert_eq!(parsed.badge_count, 0);
+        assert_eq!(parsed.icon_id, None);
+        assert_eq!(parsed.custom_icon, None);
     }
 
     #[test]

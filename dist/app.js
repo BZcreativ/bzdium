@@ -89,6 +89,95 @@
     return n > 99 ? "99+" : String(n);
   }
 
+  /* ------------------------------------------------------------------ *
+   * Icon resolution — the single source of precedence:                 *
+   *   1. user-uploaded custom icon (service.customIcon, file on disk)  *
+   *   2. bundled brand icon (service.iconId -> assets/icons/<slug>.svg)*
+   *   3. monogram fallback (1-3 letter lettermark)                     *
+   * ------------------------------------------------------------------ */
+
+  var brandManifest = null;          // slug -> brand hex (assets/icons/manifest.json)
+  var customIconCache = {};          // service id -> { file, url }
+
+  function loadBrandManifest() {
+    if (brandManifest) return Promise.resolve(brandManifest);
+    return fetch("assets/icons/manifest.json")
+      .then(function (r) { return r.json(); })
+      .then(function (m) { brandManifest = m || {}; return m; })
+      .catch(function () { brandManifest = {}; return {}; });
+  }
+
+  function resolveServiceIcon(service) {
+    if (service.customIcon) return { type: "custom" };
+    if (service.iconId && brandManifest && brandManifest[service.iconId]) {
+      return { type: "brand", slug: service.iconId, color: brandManifest[service.iconId] };
+    }
+    return { type: "monogram", letters: serviceLetter(service) };
+  }
+
+  /* Fetches the custom icon data URL (cached per icon file name, so
+   * re-renders are free and a replaced icon refetches exactly once). */
+  function ensureCustomIcon(service) {
+    if (!service.customIcon) return Promise.resolve(null);
+    var cached = customIconCache[service.id];
+    if (cached && cached.file === service.customIcon) return Promise.resolve(cached.url);
+    return cmd("get_service_icon", { id: service.id })
+      .then(function (url) {
+        if (!url) return null; // missing/corrupt file -> graceful fallback
+        customIconCache[service.id] = { file: service.customIcon, url: url };
+        return url;
+      })
+      .catch(function () { return null; });
+  }
+
+  /* Builds the icon element used everywhere (sidebar, edit preview). */
+  function buildIconEl(service) {
+    var resolved = resolveServiceIcon(service);
+    if (resolved.type === "custom") {
+      var wrap = document.createElement("span");
+      wrap.className = "svc-icon svc-icon-custom";
+      var img = document.createElement("img");
+      img.alt = "";
+      img.draggable = false;
+      wrap.appendChild(img);
+      ensureCustomIcon(service).then(function (url) {
+        if (url) img.src = url;
+        else fallbackToMonogram(wrap, service);
+      });
+      return wrap;
+    }
+    if (resolved.type === "brand") {
+      var chip = document.createElement("span");
+      chip.className = "svc-icon svc-icon-brand";
+      chip.style.setProperty("--brand", resolved.color);
+      var glyph = document.createElement("img");
+      glyph.src = "assets/icons/" + resolved.slug + ".svg";
+      glyph.alt = "";
+      glyph.draggable = false;
+      glyph.onerror = function () { fallbackToMonogram(chip, service); };
+      chip.appendChild(glyph);
+      return chip;
+    }
+    return buildMonogramEl(service, resolved.letters);
+  }
+
+  function buildMonogramEl(service, letters) {
+    var el = document.createElement("span");
+    el.className = "svc-icon svc-icon-mono";
+    var mark = letters || serviceLetter(service);
+    el.textContent = mark;
+    el.setAttribute("data-len", String(Math.min(3, Math.max(1, mark.length))));
+    return el;
+  }
+
+  function fallbackToMonogram(el, service) {
+    var mark = serviceLetter(service);
+    el.className = "svc-icon svc-icon-mono";
+    el.setAttribute("data-len", String(Math.min(3, Math.max(1, mark.length))));
+    el.style.removeProperty("--brand");
+    el.textContent = mark;
+  }
+
   function serviceLetter(service) {
     var icon = (service.icon || "").trim();
     if (icon) return icon.toUpperCase();
@@ -163,11 +252,7 @@
     if (service.id === activeServiceId) btn.classList.add("active");
     if (service.hibernated) btn.classList.add("hibernated");
 
-    var icon = document.createElement("span");
-    icon.className = "svc-icon";
-    var letters = serviceLetter(service);
-    icon.textContent = letters;
-    if (letters.length > 1) icon.setAttribute("data-two", "");
+    var icon = buildIconEl(service);
     btn.appendChild(icon);
 
     if (service.badgeCount > 0) {
@@ -395,10 +480,20 @@
       cell.style.setProperty("--hue", String(hashString(recipe.name) % 360));
 
       var icon = document.createElement("span");
-      icon.className = "svc-icon";
-      var mark = (recipe.icon || defaultIconFor(recipe.name) || "?").toUpperCase();
-      icon.textContent = mark;
-      if (mark.length > 1) icon.setAttribute("data-two", "");
+      if (recipe.iconId && brandManifest && brandManifest[recipe.iconId]) {
+        icon.className = "svc-icon svc-icon-brand";
+        icon.style.setProperty("--brand", brandManifest[recipe.iconId]);
+        var glyph = document.createElement("img");
+        glyph.src = "assets/icons/" + recipe.iconId + ".svg";
+        glyph.alt = "";
+        glyph.draggable = false;
+        icon.appendChild(glyph);
+      } else {
+        icon.className = "svc-icon svc-icon-mono";
+        var mark = (recipe.icon || defaultIconFor(recipe.name) || "?").toUpperCase();
+        icon.textContent = mark;
+        icon.setAttribute("data-len", String(Math.min(3, Math.max(1, mark.length))));
+      }
       cell.appendChild(icon);
 
       var name = document.createElement("span");
@@ -412,6 +507,7 @@
         $("add-name").value = recipe.name;
         $("add-url").value = recipe.url;
         $("add-icon").value = (recipe.icon || defaultIconFor(recipe.name)).toUpperCase();
+        $("add-icon-id").value = recipe.iconId || "";
         addIconTouched = false;
       });
       grid.appendChild(cell);
@@ -434,6 +530,11 @@
   $("add-name").addEventListener("input", function () {
     if (!addIconTouched) $("add-icon").value = defaultIconFor(this.value);
   });
+  // A hand-edited URL re-identifies the service: drop the selected recipe's
+  // brand icon so the backend re-resolves from the new host.
+  $("add-url").addEventListener("input", function () {
+    $("add-icon-id").value = "";
+  });
   $("add-icon").addEventListener("input", function () {
     addIconTouched = this.value.trim().length > 0;
   });
@@ -443,19 +544,51 @@
     var name = $("add-name").value.trim();
     var url = $("add-url").value.trim();
     var icon = $("add-icon").value.trim() || defaultIconFor(name);
+    var iconId = $("add-icon-id").value.trim() || null;
     var err = validateServiceForm(name, url);
     if (err) {
       $("add-error").textContent = err;
       $("add-error").classList.remove("hidden");
       return;
     }
-    cmd("add_service", { name: name, url: url, icon: icon })
+    cmd("add_service", { name: name, url: url, icon: icon, iconId: iconId })
       .then(function () { closeModal("add-modal"); })
       .catch(function () {});
   });
 
   /* ----- Edit service ----- */
   var editingId = null;
+
+  function serviceFromState(id) {
+    if (!currentState) return null;
+    for (var i = 0; i < (currentState.services || []).length; i++) {
+      if (currentState.services[i].id === id) return currentState.services[i];
+    }
+    return null;
+  }
+
+  function refreshEditIconPreview() {
+    var service = editingId && serviceFromState(editingId);
+    var preview = $("edit-icon-preview");
+    preview.textContent = "";
+    if (!service) return;
+    preview.appendChild(buildIconEl(service));
+    $("edit-icon-reset").disabled = !service.customIcon;
+  }
+
+  $("edit-icon-upload").addEventListener("click", function () {
+    if (!editingId) return;
+    cmd("pick_service_icon", { id: editingId })
+      .then(function () { refreshEditIconPreview(); })
+      .catch(function () {});
+  });
+
+  $("edit-icon-reset").addEventListener("click", function () {
+    if (!editingId) return;
+    cmd("reset_service_icon", { id: editingId })
+      .then(function () { refreshEditIconPreview(); })
+      .catch(function () {});
+  });
 
   function openEditModal(service) {
     editingId = service.id;
@@ -464,6 +597,7 @@
     $("edit-icon").value = service.icon || defaultIconFor(service.name);
     $("edit-enabled").checked = service.enabled !== false;
     $("edit-error").classList.add("hidden");
+    refreshEditIconPreview();
     openModal("edit-modal");
     $("edit-name").focus();
   }
@@ -657,11 +791,14 @@
         }
       }
     }).catch(function () {});
-    cmd("get_state")
+    // Brand manifest first so the initial render can resolve brand icons.
+    loadBrandManifest()
+      .then(function () { return cmd("get_state"); })
       .then(function (state) { render(state); })
       .catch(function () {});
   } else {
     // Plain-browser preview: render demo state, no backend calls.
+    brandManifest = {};
     render(mockState);
   }
 })();

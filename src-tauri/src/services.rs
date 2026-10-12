@@ -11,7 +11,173 @@ use crate::webviews;
 pub struct Recipe {
     pub name: String,
     pub url: String,
+    /// 1-2 letter fallback lettermark.
     pub icon: String,
+    /// Brand icon slug (dist/assets/icons/<slug>.svg); null -> monogram.
+    #[serde(rename = "iconId")]
+    pub icon_id: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Custom service icons
+// ---------------------------------------------------------------------------
+
+/// Uploaded icons live as files in <dataDir>/icons/{serviceId}.{ext}.
+/// Service configuration stores only the file name — never base64 blobs.
+pub const ICONS_DIR: &str = "icons";
+/// Upload size limit (bytes). Sidebar icons render at 44 logical px; even
+/// a 4x retina raster is a few KB.
+pub const MAX_ICON_BYTES: u64 = 256 * 1024;
+
+/// Sniffs the image type from magic bytes (never trusts the picked file
+/// name). Returns the canonical extension. SVGs are accepted as text and
+/// are only ever rendered through <img>, where scripts cannot execute.
+fn sniff_image_type(bytes: &[u8]) -> Option<(&'static str, &'static str)> {
+    if bytes.len() >= 8 && bytes[..8] == [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a] {
+        return Some(("png", "image/png"));
+    }
+    if bytes.len() >= 3 && bytes[..3] == [0xff, 0xd8, 0xff] {
+        return Some(("jpg", "image/jpeg"));
+    }
+    if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some(("webp", "image/webp"));
+    }
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(512)]).to_ascii_lowercase();
+    if head.contains("<svg") || head.trim_start().starts_with("<?xml") {
+        return Some(("svg", "image/svg+xml"));
+    }
+    None
+}
+
+fn icon_file_dir(data_dir: &std::path::Path) -> std::path::PathBuf {
+    data_dir.join(ICONS_DIR)
+}
+
+/// Removes any stored icon file for the service (any extension), so a
+/// replacement with a different format does not leave stale files.
+fn remove_icon_files(data_dir: &std::path::Path, id: &str) {
+    for ext in ["png", "jpg", "webp", "svg"] {
+        let _ = std::fs::remove_file(icon_file_dir(data_dir).join(format!("{id}.{ext}")));
+    }
+}
+
+/// Uploads a custom icon for a service via a native file picker: validates
+/// type + size, stores it as a file, records the file name in the service
+/// config. `Err` messages are user-facing (toasted by the UI).
+#[tauri::command]
+pub async fn pick_service_icon(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    id: String,
+) -> Result<AppState, String> {
+    let file = app
+        .dialog()
+        .file()
+        .add_filter("Image (png, jpg, webp, svg)", &["png", "jpg", "jpeg", "webp", "svg"])
+        .blocking_pick_file();
+    let Some(file) = file else {
+        // user cancelled — return current state unchanged
+        return Ok(state.lock().map_err(|e| e.to_string())?.snapshot());
+    };
+    let path = file.into_path().map_err(|e| format!("invalid file: {e}"))?;
+    let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read file: {e}"))?;
+    if meta.len() > MAX_ICON_BYTES {
+        return Err(format!(
+            "Icon is {} KB; the limit is {} KB.",
+            meta.len() / 1024,
+            MAX_ICON_BYTES / 1024
+        ));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read file: {e}"))?;
+    let (ext, _mime) =
+        sniff_image_type(&bytes).ok_or_else(|| "Not a supported image (png, jpg, webp, svg).".to_string())?;
+
+    let (snapshot, data_dir) = {
+        let mut inner = state.lock().map_err(|e| e.to_string())?;
+        if inner.service(&id).is_none() {
+            return Err(format!("unknown service id {id}"));
+        }
+        let data_dir = inner.data_dir.clone();
+        let dir = icon_file_dir(&data_dir);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create icons dir: {e}"))?;
+        remove_icon_files(&data_dir, &id);
+        let dest = dir.join(format!("{id}.{ext}"));
+        crate::storage::atomic_write_bytes(&dest, &bytes)
+            .map_err(|e| format!("cannot store icon: {e}"))?;
+        let service = inner.service_mut(&id).expect("checked above");
+        service.custom_icon = Some(format!("{id}.{ext}"));
+        inner.save_services()?;
+        (inner.snapshot(), data_dir)
+    };
+    let _ = data_dir;
+    emit_snapshot(&app, &snapshot);
+    Ok(snapshot)
+}
+
+/// Clears a service's custom icon. The icon resolver then falls back to the
+/// brand icon (or monogram) automatically.
+#[tauri::command]
+pub async fn reset_service_icon(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    id: String,
+) -> Result<AppState, String> {
+    let (snapshot, data_dir) = {
+        let mut inner = state.lock().map_err(|e| e.to_string())?;
+        let service = inner
+            .service_mut(&id)
+            .ok_or_else(|| format!("unknown service id {id}"))?;
+        let had = service.custom_icon.take().is_some();
+        let data_dir = inner.data_dir.clone();
+        if had {
+            inner.save_services()?;
+        }
+        (inner.snapshot(), data_dir)
+    };
+    remove_icon_files(&data_dir, &id);
+    emit_snapshot(&app, &snapshot);
+    Ok(snapshot)
+}
+
+/// Returns the custom icon as a data URL for <img> rendering, or null when
+/// the service has no (readable) custom icon file.
+#[tauri::command]
+pub fn get_service_icon(
+    state: State<'_, SharedState>,
+    id: String,
+) -> Result<Option<String>, String> {
+    use base64::Engine as _;
+    let (file_name, data_dir) = {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        let service = inner
+            .service(&id)
+            .ok_or_else(|| format!("unknown service id {id}"))?;
+        (service.custom_icon.clone(), inner.data_dir.clone())
+    };
+    let Some(file_name) = file_name else {
+        return Ok(None);
+    };
+    // Only ever read back files we named ourselves ({uuid}.{known-ext}).
+    let ext = file_name.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" => "image/jpeg",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => return Ok(None),
+    };
+    let bytes = std::fs::read(icon_file_dir(&data_dir).join(&file_name))
+        .map_err(|e| format!("cannot read icon: {e}"))
+        .or_else(|e| {
+            // missing/corrupt file: graceful fallback, not an error toast
+            eprintln!("{e}");
+            Ok::<Vec<u8>, String>(Vec::new())
+        })?;
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(Some(format!("data:{mime};base64,{b64}")))
 }
 
 /// Two-letter lettermark for a service name: first letter of the first two
@@ -37,82 +203,150 @@ pub fn initials(name: &str) -> String {
 
 /// Built-in recipe catalog (normative list, spec section 6): the popular
 /// slice of Ferdium's recipe store that works as a plain web client
-/// (no per-service JS hacks — those are deliberately not ported).
+/// (per-service JS hacks are deliberately not ported). Third tuple element:
+/// brand icon slug ("" = none bundled -> monogram fallback). Slugs reference
+/// dist/assets/icons/<slug>.svg (Simple Icons, CC0).
 pub fn recipes() -> Vec<Recipe> {
     [
         // messaging
-        ("WhatsApp", "https://web.whatsapp.com"),
-        ("Telegram", "https://web.telegram.org"),
-        ("Discord", "https://discord.com/app"),
-        ("Slack", "https://app.slack.com"),
-        ("Messenger", "https://www.messenger.com"),
-        ("Google Chat", "https://chat.google.com"),
-        ("Teams", "https://teams.microsoft.com"),
-        ("Teams Personal", "https://teams.live.com"),
-        ("Element", "https://app.element.io"),
-        ("Mattermost", "https://chat.mattermost.com"),
-        ("Rocket.Chat", "https://open.rocket.chat"),
-        ("Zulip", "https://chat.zulip.org"),
-        ("Wire", "https://app.wire.com"),
-        ("Threema Web", "https://web.threema.ch"),
-        ("WeChat", "https://web.wechat.com"),
-        ("GroupMe", "https://web.groupme.com"),
-        ("IRCCloud", "https://www.irccloud.com"),
-        ("Skype", "https://web.skype.com"),
-        ("Steam Chat", "https://steamcommunity.com/chat"),
-        ("Zoom", "https://zoom.us/join"),
+        ("WhatsApp", "https://web.whatsapp.com", "whatsapp"),
+        ("Telegram", "https://web.telegram.org", "telegram"),
+        ("Discord", "https://discord.com/app", "discord"),
+        ("Slack", "https://app.slack.com", ""),
+        ("Messenger", "https://www.messenger.com", "messenger"),
+        ("Google Chat", "https://chat.google.com", "googlechat"),
+        ("Teams", "https://teams.microsoft.com", ""),
+        ("Teams Personal", "https://teams.live.com", ""),
+        ("Element", "https://app.element.io", "element"),
+        ("Mattermost", "https://chat.mattermost.com", "mattermost"),
+        ("Rocket.Chat", "https://open.rocket.chat", ""),
+        ("Zulip", "https://chat.zulip.org", "zulip"),
+        ("Wire", "https://app.wire.com", "wire"),
+        ("Threema Web", "https://web.threema.ch", "threema"),
+        ("WeChat", "https://web.wechat.com", "wechat"),
+        ("GroupMe", "https://web.groupme.com", "groupme"),
+        ("IRCCloud", "https://www.irccloud.com", ""),
+        ("Skype", "https://web.skype.com", ""),
+        ("Steam Chat", "https://steamcommunity.com/chat", "steam"),
+        ("Zoom", "https://zoom.us/join", "zoom"),
         // mail
-        ("Gmail", "https://mail.google.com"),
-        ("Outlook", "https://outlook.live.com"),
-        ("Outlook Work", "https://outlook.office.com"),
-        ("Proton Mail", "https://mail.proton.me"),
-        ("Proton Calendar", "https://calendar.proton.me"),
-        ("Tuta", "https://app.tuta.com"),
-        ("Fastmail", "https://app.fastmail.com"),
-        ("Hey", "https://app.hey.com"),
-        ("Yahoo Mail", "https://mail.yahoo.com"),
+        ("Gmail", "https://mail.google.com", "gmail"),
+        ("Outlook", "https://outlook.live.com", ""),
+        ("Outlook Work", "https://outlook.office.com", ""),
+        ("Proton Mail", "https://mail.proton.me", "protonmail"),
+        ("Proton Calendar", "https://calendar.proton.me", ""),
+        ("Tuta", "https://app.tuta.com", "tuta"),
+        ("Fastmail", "https://app.fastmail.com", ""),
+        ("Hey", "https://app.hey.com", ""),
+        ("Yahoo Mail", "https://mail.yahoo.com", ""),
         // social
-        ("X", "https://x.com"),
-        ("Instagram", "https://www.instagram.com"),
-        ("LinkedIn", "https://www.linkedin.com"),
-        ("Facebook", "https://www.facebook.com"),
-        ("Reddit", "https://old.reddit.com"),
-        ("Mastodon", "https://mastodon.social"),
-        ("Bluesky", "https://bsky.app"),
-        ("TikTok", "https://www.tiktok.com"),
-        ("Pinterest", "https://www.pinterest.com"),
-        ("Twitch", "https://www.twitch.tv"),
-        ("YouTube", "https://www.youtube.com"),
+        ("X", "https://x.com", "x"),
+        ("Instagram", "https://www.instagram.com", "instagram"),
+        ("LinkedIn", "https://www.linkedin.com", ""),
+        ("Facebook", "https://www.facebook.com", "facebook"),
+        ("Reddit", "https://old.reddit.com", "reddit"),
+        ("Mastodon", "https://mastodon.social", "mastodon"),
+        ("Bluesky", "https://bsky.app", "bluesky"),
+        ("TikTok", "https://www.tiktok.com", "tiktok"),
+        ("Pinterest", "https://www.pinterest.com", "pinterest"),
+        ("Twitch", "https://www.twitch.tv", "twitch"),
+        ("YouTube", "https://www.youtube.com", "youtube"),
         // AI
-        ("ChatGPT", "https://chatgpt.com"),
-        ("Claude", "https://claude.ai"),
-        ("Gemini", "https://gemini.google.com"),
-        ("Copilot", "https://copilot.microsoft.com"),
-        ("Perplexity", "https://www.perplexity.ai"),
+        ("ChatGPT", "https://chatgpt.com", ""),
+        ("Claude", "https://claude.ai", "anthropic"),
+        ("Gemini", "https://gemini.google.com", "googlegemini"),
+        ("Copilot", "https://copilot.microsoft.com", ""),
+        ("Perplexity", "https://www.perplexity.ai", "perplexity"),
         // productivity
-        ("Notion", "https://www.notion.so"),
-        ("Google Calendar", "https://calendar.google.com"),
-        ("Google Keep", "https://keep.google.com"),
-        ("Google Drive", "https://drive.google.com"),
-        ("Google Docs", "https://docs.google.com"),
-        ("Google Photos", "https://photos.google.com"),
-        ("Google Voice", "https://voice.google.com"),
-        ("OneDrive", "https://onedrive.live.com"),
-        ("Dropbox", "https://www.dropbox.com"),
-        ("Trello", "https://trello.com"),
-        ("Asana", "https://app.asana.com"),
-        ("Todoist", "https://app.todoist.com"),
-        ("TickTick", "https://ticktick.com"),
-        ("Feedly", "https://feedly.com"),
-        ("Bitwarden Vault", "https://vault.bitwarden.com"),
+        ("Notion", "https://www.notion.so", "notion"),
+        ("Google Calendar", "https://calendar.google.com", "googlecalendar"),
+        ("Google Keep", "https://keep.google.com", "googlekeep"),
+        ("Google Drive", "https://drive.google.com", "googledrive"),
+        ("Google Docs", "https://docs.google.com", "googledocs"),
+        ("Google Photos", "https://photos.google.com", "googlephotos"),
+        ("Google Voice", "https://voice.google.com", ""),
+        ("OneDrive", "https://onedrive.live.com", ""),
+        ("Dropbox", "https://www.dropbox.com", "dropbox"),
+        ("Trello", "https://trello.com", "trello"),
+        ("Asana", "https://app.asana.com", "asana"),
+        ("Todoist", "https://app.todoist.com", "todoist"),
+        ("TickTick", "https://ticktick.com", "ticktick"),
+        ("Feedly", "https://feedly.com", ""),
+        ("Bitwarden Vault", "https://vault.bitwarden.com", "bitwarden"),
     ]
     .into_iter()
-    .map(|(name, url)| Recipe {
+    .map(|(name, url, slug)| Recipe {
         name: name.to_string(),
         url: url.to_string(),
         icon: initials(name),
+        icon_id: if slug.is_empty() { None } else { Some(slug.to_string()) },
     })
     .collect()
+}
+
+/// Resolves a brand icon slug from a service URL's host (used for custom
+/// URLs and when a service's URL is edited). Hosts without a bundled icon
+/// return None -> monogram fallback.
+pub fn brand_slug_for_url(raw: &str) -> Option<String> {
+    let host = Url::parse(raw.trim())
+        .ok()?
+        .host_str()?
+        .trim_start_matches("www.")
+        .to_ascii_lowercase();
+    let slug = match host.as_str() {
+        // messaging
+        "web.whatsapp.com" => "whatsapp",
+        "web.telegram.org" => "telegram",
+        "discord.com" => "discord",
+        "messenger.com" => "messenger",
+        "chat.google.com" => "googlechat",
+        "app.element.io" => "element",
+        "chat.mattermost.com" => "mattermost",
+        "chat.zulip.org" => "zulip",
+        "app.wire.com" => "wire",
+        "web.threema.ch" => "threema",
+        "web.wechat.com" => "wechat",
+        "web.groupme.com" => "groupme",
+        "steamcommunity.com" => "steam",
+        "zoom.us" => "zoom",
+        // mail
+        "mail.google.com" => "gmail",
+        "mail.proton.me" => "protonmail",
+        "app.tuta.com" => "tuta",
+        // social
+        "x.com" | "twitter.com" => "x",
+        "instagram.com" => "instagram",
+        "facebook.com" => "facebook",
+        "reddit.com" | "old.reddit.com" => "reddit",
+        "mastodon.social" => "mastodon",
+        "bsky.app" => "bluesky",
+        "tiktok.com" | "www.tiktok.com" => "tiktok",
+        "pinterest.com" => "pinterest",
+        "twitch.tv" | "www.twitch.tv" => "twitch",
+        "youtube.com" | "www.youtube.com" | "m.youtube.com" => "youtube",
+        // ai
+        "claude.ai" => "anthropic",
+        "gemini.google.com" => "googlegemini",
+        "www.perplexity.ai" | "perplexity.ai" => "perplexity",
+        // productivity
+        "notion.so" | "www.notion.so" => "notion",
+        "calendar.google.com" => "googlecalendar",
+        "keep.google.com" => "googlekeep",
+        "drive.google.com" => "googledrive",
+        "docs.google.com" => "googledocs",
+        "photos.google.com" => "googlephotos",
+        "dropbox.com" | "www.dropbox.com" => "dropbox",
+        "trello.com" => "trello",
+        "app.asana.com" => "asana",
+        "todoist.com" | "app.todoist.com" => "todoist",
+        "ticktick.com" => "ticktick",
+        "vault.bitwarden.com" => "bitwarden",
+        // url-match only
+        "github.com" => "github",
+        "gitlab.com" => "gitlab",
+        _ => return None,
+    };
+    Some(slug.to_string())
 }
 
 /// Validates that `raw` is a well-formed https URL, returning the normalized form.
@@ -140,12 +374,18 @@ pub async fn add_service(
     name: String,
     url: String,
     icon: String,
+    icon_id: Option<String>,
 ) -> Result<AppState, String> {
     let url = validate_https_url(&url)?;
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("service name must not be empty".to_string());
     }
+    // Brand icon: explicit (recipe) or resolved from the URL host.
+    let icon_id = match icon_id {
+        Some(slug) if is_valid_slug(&slug) => Some(slug),
+        _ => brand_slug_for_url(&url),
+    };
     let mut inner = state.lock().map_err(|e| e.to_string())?;
     let order = inner.services.iter().map(|s| s.order).max().map_or(0, |m| m + 1);
     let service = Service {
@@ -155,6 +395,8 @@ pub async fn add_service(
         icon,
         enabled: true,
         order,
+        icon_id,
+        custom_icon: None,
         hibernated: false,
         badge_count: 0,
     };
@@ -167,6 +409,17 @@ pub async fn add_service(
     let snapshot = state.lock().map_err(|e| e.to_string())?.snapshot();
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
+}
+
+/// Brand-icon slugs become file paths (dist/assets/icons/<slug>.svg is
+/// bundled; URL-derived slugs go through the same map), so accept strictly
+/// lowercase [a-z0-9-].
+fn is_valid_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.len() <= 32
+        && slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 #[tauri::command]
@@ -192,6 +445,11 @@ pub async fn update_service(
             service.icon = icon;
             let was_enabled = service.enabled;
             service.enabled = enabled;
+            // A URL change re-identifies the service: refresh the default
+            // brand icon — but never clobber a user-uploaded custom icon.
+            if url_changed && service.custom_icon.is_none() {
+                service.icon_id = brand_slug_for_url(&service.url);
+            }
             (url_changed, service.hibernated, was_enabled && !enabled)
         };
         if now_disabled {
@@ -255,6 +513,8 @@ pub async fn remove_service(
             eprintln!("remove_service: could not reclaim session dir {}: {e}", session_dir.display());
         }
     }
+    // Custom icon file goes with the service.
+    remove_icon_files(&data_dir, &id);
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
 }
@@ -280,6 +540,8 @@ pub fn reorder_services(
 }
 
 /// A service as stored in an exported config file — no runtime fields.
+/// Brand icon slug travels with the export; uploaded custom icons are local
+/// files and deliberately do not.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigService {
@@ -289,6 +551,8 @@ pub struct ConfigService {
     pub icon: String,
     pub enabled: bool,
     pub order: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -364,6 +628,7 @@ pub async fn export_config(app: AppHandle, state: State<'_, SharedState>) -> Res
                 icon: s.icon.clone(),
                 enabled: s.enabled,
                 order: s.order,
+                icon_id: s.icon_id.clone(),
             })
             .collect();
         services.sort_by_key(|s| s.order);
@@ -438,6 +703,11 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
             icon: s.icon.clone(),
             enabled: s.enabled,
             order: s.order,
+            // brand slug travels with the export; validate strictly since
+            // slugs become asset file paths
+            icon_id: s.icon_id.as_deref().filter(|s| is_valid_slug(s)).map(str::to_string),
+            // uploaded custom icons are local files — they do not travel
+            custom_icon: None,
             hibernated: false,
             badge_count: 0,
         });
@@ -532,6 +802,59 @@ mod tests {
     }
 
     #[test]
+    fn brand_slug_url_matching() {
+        assert_eq!(brand_slug_for_url("https://web.whatsapp.com/").as_deref(), Some("whatsapp"));
+        assert_eq!(brand_slug_for_url("https://www.instagram.com/").as_deref(), Some("instagram"));
+        assert_eq!(brand_slug_for_url("https://github.com/org/repo").as_deref(), Some("github"));
+        assert_eq!(brand_slug_for_url("https://x.com/home").as_deref(), Some("x"));
+        assert_eq!(brand_slug_for_url("https://claude.ai/chat").as_deref(), Some("anthropic"));
+        // no bundled icon -> monogram
+        assert_eq!(brand_slug_for_url("https://app.slack.com/"), None);
+        assert_eq!(brand_slug_for_url("https://example.com/"), None);
+        assert_eq!(brand_slug_for_url("not a url"), None);
+        // every catalog recipe with a slug resolves back through its URL
+        for r in recipes() {
+            if let Some(slug) = &r.icon_id {
+                assert_eq!(brand_slug_for_url(&r.url).as_deref(), Some(slug.as_str()),
+                    "recipe {} url/host mismatch", r.name);
+                assert!(is_valid_slug(slug), "invalid slug {slug}");
+            }
+        }
+    }
+
+    #[test]
+    fn bundled_brand_slugs_have_assets() {
+        // The icon files are part of the repo; this pins catalog slugs to
+        // actually-bundled assets so nothing silently falls back.
+        let icons_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dist")
+            .join("assets")
+            .join("icons");
+        let manifest: std::collections::HashMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string(icons_dir.join("manifest.json")).unwrap())
+                .unwrap();
+        assert!(manifest.len() >= 40, "expected the bundled icon set, got {}", manifest.len());
+        for r in recipes() {
+            if let Some(slug) = &r.icon_id {
+                assert!(manifest.contains_key(slug), "manifest missing {slug}");
+                assert!(icons_dir.join(format!("{slug}.svg")).exists(), "svg missing for {slug}");
+            }
+        }
+    }
+
+    #[test]
+    fn image_type_sniffing() {
+        assert_eq!(sniff_image_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).map(|t| t.0), Some("png"));
+        assert_eq!(sniff_image_type(&[0xff, 0xd8, 0xff, 0xe0]).map(|t| t.0), Some("jpg"));
+        assert_eq!(sniff_image_type(b"RIFF\x00\x00\x00\x00WEBPVP8 ").map(|t| t.0), Some("webp"));
+        assert_eq!(sniff_image_type(b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>").map(|t| t.0), Some("svg"));
+        assert_eq!(sniff_image_type(b"<?xml version=\"1.0\"?><svg/>").map(|t| t.0), Some("svg"));
+        assert_eq!(sniff_image_type(b"not an image at all"), None);
+        assert_eq!(sniff_image_type(&[]), None);
+    }
+
+    #[test]
     fn https_url_validation() {
         assert!(validate_https_url("https://web.whatsapp.com").is_ok());
         assert!(validate_https_url("https://example.com/path?q=1").is_ok());
@@ -555,6 +878,7 @@ mod tests {
                 icon: "TE".to_string(),
                 enabled: true,
                 order: 0,
+                icon_id: Some("telegram".to_string()),
             }],
         };
         let json = serde_json::to_string_pretty(&config).unwrap();
