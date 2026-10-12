@@ -2,6 +2,10 @@
 
 **A lightweight, portable multi-messenger for Windows x64 — the [Ferdium](https://github.com/ferdium/ferdium-app) concept, re-implemented from scratch in Rust.**
 
+<video src="https://github.com/BZcreativ/bzdium/releases/download/v0.2.1/bzdium-demo.mp4" controls muted width="640"></video>
+
+*(15-second overview — [docs/demo.mp4](docs/demo.mp4) in this repo)*
+
 One window, all your messengers: WhatsApp, Telegram, Discord, Slack, Gmail and 50+ more as real, isolated web apps — with unread badges, hibernation for low RAM, and a single ~12 MB portable exe. No Electron, no bundled Chromium: bzdium uses the system WebView2 runtime.
 
 > **Relationship to Ferdium:** bzdium is an independent, from-scratch re-implementation of the Ferdium *concept* (one window, many messaging services, per-service session isolation, unread badges, hibernation). It contains **no Ferdium code** — the original is Electron/JavaScript and licensed AGPL-3.0; bzdium is Rust + [Tauri](https://v2.tauri.app) + vanilla JS. All credit for the original idea and UX goes to the Ferdium team and its Ferdi/Franz ancestors.
