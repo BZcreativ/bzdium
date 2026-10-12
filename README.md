@@ -35,6 +35,15 @@ Measured on Windows 11, 2 live messenger webviews.
 - **Workspace export / import** — settings + services as a JSON file (service ids preserved, so local sessions reconnect)
 - Dark/light UI, system tray + minimize-to-tray, start-with-Windows, drag-to-reorder, single-instance
 
+## Install
+
+Two ways to run bzdium on Windows 10/11 x64:
+
+- **Installer** — [`bzdium_0.2.1_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.1/bzdium_0.2.1_x64-setup.exe) (2.8 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
+- **Portable** — [`bzdium-v0.2.1-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.1/bzdium-v0.2.1-x64-portable.exe) (12 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
+
+Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can fetch it if missing).
+
 ## Build
 
 Requires the MSVC toolchain and the WebView2 runtime (preinstalled on Windows 10/11).
@@ -45,7 +54,7 @@ cargo build --release        # -> target/release/bzdium.exe
 cargo test                   # 22 tests incl. IPC/security contracts
 ```
 
-Copy `bzdium.exe` anywhere writable and run it.
+Build the installer with `npx @tauri-apps/cli build` (NSIS setup lands in `target/release/bundle/nsis/`), or see **Install** above for released binaries.
 
 > Toolchain note (this machine): rustc 1.98/1.99 intermittently crashes inside
 > the compiler itself (memory corruption signature). Builds are incremental —

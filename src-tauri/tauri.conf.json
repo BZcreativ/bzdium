@@ -21,7 +21,17 @@
     "security": {}
   },
   "bundle": {
-    "active": false,
-    "icon": ["icons/icon.ico"]
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "shortDescription": "Lightweight multi-messenger (Ferdium concept in Rust)",
+    "longDescription": "bzdium — all your messengers in one light window. A from-scratch Rust/WebView2 re-implementation of the Ferdium concept: isolated per-service sessions, unread badges, hibernation, portable single-exe or installed.",
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "languages": ["English"],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }
