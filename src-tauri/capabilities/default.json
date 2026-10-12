@@ -21,6 +21,7 @@
     "allow-set-overlay-mode",
     "allow-navigate-url",
     "allow-export-config",
-    "allow-import-config"
+    "allow-import-config",
+    "allow-open-devtools"
   ]
 }

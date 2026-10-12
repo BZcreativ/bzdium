@@ -141,6 +141,7 @@ interface Settings {
   minimizeToTray: boolean;      // default true
   startWithWindows: boolean;    // default false
   showUrlBar: boolean;          // default true; hides/shows the URL bar strip
+  devMode: boolean;             // default false; gates `open_devtools` + Inspect menu entries
   darkUi: boolean;              // default true
 }
 
@@ -169,6 +170,7 @@ interface AppState {
 | `hibernate_service` | `{ id: ServiceId }` | `AppState` | Closes the webview, marks hibernated. |
 | `wake_service` | `{ id: ServiceId }` | `AppState` | Recreates the webview. |
 | `set_overlay_mode` | `{ open: boolean }` | `null` | While a UI overlay (modal / context menu) is open the UI webview must not be occluded by service webviews (they sit above it in z-order); `open: true` hides all service webviews, `open: false` re-shows the active one. No state change, no event. |
+| `open_devtools` | `{ id: ServiceId \| null }` | `null` | Developer mode only (`settings.devMode`, enforced server-side). Opens DevTools on the given service's webview, or the UI webview when `id` is null. Requires the tauri `devtools` feature (enabled — also works in release builds). |
 | `update_settings` | `{ settings: Settings }` | `AppState` | Persists settings, applies side effects (autostart key, hibernation timer, re-applies webview geometry when `showUrlBar` changed). |
 | `navigate_url` | `{ id: ServiceId, url: string }` | `null` | URL bar "Go": validates https, navigates the service webview (creating it if hibernated). |
 | `export_config` | — | `string \| null` | Native save dialog → writes `{type:"bzdium-config",version:1,exportedAt,settings,services[]}` (services carry id/name/url/icon/enabled/order; runtime fields reset). `null` = user cancelled. Session folders are NOT part of the export. |
@@ -217,6 +219,19 @@ badge pipeline needs an explicit app ACL manifest and a remote capability:
   `src-tauri/tests/remote_pattern.rs`.)
 - Tauri v1's `dangerousRemoteDomainIpcAccess` config field does not exist in
   v2 and must not be used.
+
+### Branding
+
+Assets live in `branding-src/` (source of truth) and are consumed as:
+- `src-tauri/icons/icon.ico` (16–256, PNG-embedded) + `icon-32.png` (tray) —
+  regenerated via `build-helpers/resize-icons.ps1` + `build-helpers/gen-icons.js`
+  from `app-icon-1024.png`.
+- `dist/assets/symbol.svg` (sidebar logo), `dist/assets/wordmark-{dark,light}.svg`
+  (welcome card; CSS swaps variants with the theme).
+
+Palette (CSS custom properties in `dist/styles.css`): primary accent blue
+`#347CFF` (`--accent`), violet `#7838F5` (`--accent-2`, active-service ring),
+cyan `#38D5F4` (`--highlight`), deep navy `#12132D` (dark-theme `--bg`).
 
 ### UI overlay visibility contract
 

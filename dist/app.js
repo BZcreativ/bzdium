@@ -18,7 +18,7 @@
       { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 }
     ],
     activeServiceId: "demo-1",
-    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true },
+    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false },
     totalBadgeCount: 15,
     dataDir: "demo"
   };
@@ -247,10 +247,15 @@
       });
     }
     addCtxItem("Edit", false, function () { openEditModal(service); });
+    if (currentState && currentState.settings && currentState.settings.devMode) {
+      addCtxItem("Inspect page (DevTools)", false, function () {
+        cmd("open_devtools", { id: service.id }).catch(function () {});
+      });
+    }
     addCtxSep();
     addCtxItem("Remove", true, function () {
       openConfirm(
-        "Remove “" + service.name + "”? Its saved session is kept on disk.",
+        "Remove “" + service.name + "”? Its saved session (login data) is deleted too.",
         function () { cmd("remove_service", { id: service.id }).catch(function () {}); }
       );
     });
@@ -494,11 +499,35 @@
     $("set-autostart").checked = !!s.startWithWindows;
     $("set-urlbar").checked = s.showUrlBar !== false;
     $("set-dark").checked = s.darkUi !== false;
+    $("set-devmode").checked = !!s.devMode;
     $("settings-error").classList.add("hidden");
+    refreshSettingsFooter();
     openModal("settings-modal");
   }
 
+  /* Troubleshooting footer: version + resolved data dir; DevTools button
+   * only while developer mode is on. */
+  function refreshSettingsFooter() {
+    var s = (currentState && currentState.settings) || {};
+    var footer = $("settings-footer");
+    var parts = [];
+    if (currentState && currentState.dataDir) parts.push(currentState.dataDir);
+    if (hasTauri && tauri.app && tauri.app.getVersion) {
+      tauri.app.getVersion().then(function (v) {
+        footer.textContent = "bzdium v" + v + (currentState && currentState.dataDir ? "  ·  " + currentState.dataDir : "");
+      }).catch(function () {});
+    } else {
+      footer.textContent = parts.join("  ·  ");
+    }
+    footer.classList.remove("hidden");
+    $("dev-actions").classList.toggle("hidden", !s.devMode);
+  }
+
   $("settings-btn").addEventListener("click", openSettingsModal);
+
+  $("devtools-ui-btn").addEventListener("click", function () {
+    cmd("open_devtools", { id: null }).catch(function () {});
+  });
 
   $("settings-form").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -514,7 +543,8 @@
         minimizeToTray: $("set-tray").checked,
         startWithWindows: $("set-autostart").checked,
         showUrlBar: $("set-urlbar").checked,
-        darkUi: $("set-dark").checked
+        darkUi: $("set-dark").checked,
+        devMode: $("set-devmode").checked
       }
     }).then(function () { closeModal("settings-modal"); })
       .catch(function () {});

@@ -294,6 +294,35 @@ pub async fn navigate(
     Ok(snapshot)
 }
 
+/// Developer mode: opens DevTools on a webview — `Some(service id)` for that
+/// service's page, `None` for the UI webview itself. Async per the locking
+/// contract (webview op); requires the tauri `devtools` feature, which also
+/// enables it in release builds.
+#[tauri::command]
+pub async fn open_devtools(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    id: Option<String>,
+) -> Result<(), String> {
+    let dev_mode = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .settings
+        .dev_mode;
+    if !dev_mode {
+        return Err("developer mode is disabled".to_string());
+    }
+    let label = match id {
+        Some(id) => label_for(&id),
+        None => crate::state::UI_WEBVIEW_LABEL.to_string(),
+    };
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview {label} not found"))?;
+    webview.open_devtools();
+    Ok(())
+}
+
 /// Navigates a service webview to an explicit https URL (URL bar "Go").
 #[tauri::command]
 pub async fn navigate_url(

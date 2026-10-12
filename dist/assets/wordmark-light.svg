@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#38d5f4"/><stop offset=".52" stop-color="#347cff"/><stop offset="1" stop-color="#7838f5"/></linearGradient></defs>
+<g transform="translate(35 30) scale(.40)"><rect width="1024" height="1024" rx="220" fill="#12132d"/><path d="M220 760V320c0-91 67-151 164-151h222c107 0 180 63 180 154 0 63-33 111-90 137 65 27 104 78 104 145 0 96-76 164-189 164H344c-55 0-94-20-124-9z" fill="url(#g)"/><path d="M220 760V554c0-56 43-99 100-99h186c67 0 116 41 116 99s-49 100-116 100H340z" fill="#17132f"/><g fill="#5d8cff"><circle cx="354" cy="555" r="22"/><circle cx="435" cy="555" r="22"/><circle cx="516" cy="555" r="22"/></g></g>
+<text x="470" y="250" font-family="Inter, Avenir, Arial, sans-serif" font-size="170" font-weight="700" letter-spacing="-5" fill="#15172b">bzdium</text>
+<text x="480" y="330" font-family="Inter, Avenir, Arial, sans-serif" font-size="38" fill="#525b75">A Rust-powered fork of Ferdium</text>
+</svg>

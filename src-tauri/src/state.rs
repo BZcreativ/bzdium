@@ -38,6 +38,10 @@ pub struct Settings {
     /// Older settings.json files predate this field; default to visible.
     #[serde(default = "default_show_url_bar")]
     pub show_url_bar: bool,
+    /// Developer mode: surfaces DevTools entries in the UI (troubleshooting).
+    /// Older settings.json files predate this field.
+    #[serde(default)]
+    pub dev_mode: bool,
 }
 
 impl Default for Settings {
@@ -48,6 +52,7 @@ impl Default for Settings {
             start_with_windows: false,
             dark_ui: true,
             show_url_bar: true,
+            dev_mode: false,
         }
     }
 }

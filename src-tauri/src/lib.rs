@@ -80,6 +80,7 @@ pub fn run() {
             webviews::hibernate_service,
             webviews::wake_service,
             webviews::set_overlay_mode,
+            webviews::open_devtools,
             badges::report_title,
         ])
         .setup(|app| {
@@ -102,10 +103,6 @@ pub fn run() {
             let window = app
                 .get_window(state::UI_WEBVIEW_LABEL)
                 .expect("main window must exist");
-            #[cfg(debug_assertions)]
-            if let Some(ui) = app.get_webview(state::UI_WEBVIEW_LABEL) {
-                ui.open_devtools();
-            }
             let handle = app.handle().clone();
             window.on_window_event(move |event| match event {
                 WindowEvent::CloseRequested { api, .. } => {

@@ -1,28 +1,32 @@
-/* bzdium UI chrome — dark charcoal + purple accent, light theme via body.light */
+/* bzdium UI chrome — brand palette: blue #347CFF, cyan #38D5F4,
+ * violet #7838F5, deep navy #12132D (see branding-src/README.txt).
+ * Light theme via body.light. */
 
 :root {
-  --bg: #1e1e24;
-  --bg-raised: #26262e;
-  --bg-hover: #2e2e38;
-  --border: #3a3a46;
-  --text: #e6e6ee;
-  --text-dim: #9a9aa8;
-  --accent: #6c4fbb;
-  --accent-hover: #7d5fd0;
+  --bg: #12132d;
+  --bg-raised: #1a1c3f;
+  --bg-hover: #232655;
+  --border: #2c2f5e;
+  --text: #e8eaf6;
+  --text-dim: #9aa0c3;
+  --accent: #347cff;
+  --accent-hover: #4d8dff;
+  --accent-2: #7838f5;
+  --highlight: #38d5f4;
   --badge: #e5484d;
   --danger: #d64550;
   --danger-hover: #e5484d;
-  --modal-scrim: rgba(0, 0, 0, 0.55);
+  --modal-scrim: rgba(6, 6, 20, 0.6);
 }
 
 body.light {
-  --bg: #f2f2f6;
+  --bg: #f2f3fa;
   --bg-raised: #ffffff;
-  --bg-hover: #e4e4ec;
-  --border: #d2d2dc;
-  --text: #23232b;
-  --text-dim: #62626e;
-  --modal-scrim: rgba(30, 30, 40, 0.35);
+  --bg-hover: #e4e7f6;
+  --border: #d5d8ec;
+  --text: #171a33;
+  --text-dim: #5f6485;
+  --modal-scrim: rgba(23, 19, 45, 0.35);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -63,8 +67,8 @@ body {
   position: relative;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
-  background: var(--accent);
+  border-radius: 32%;
+  background: var(--bg-raised);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,11 +76,11 @@ body {
   margin-bottom: 12px;
 }
 
-.logo-letter {
-  color: #fff;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1;
+.logo-symbol {
+  width: 36px;
+  height: 36px;
+  display: block;
+  pointer-events: none;
 }
 
 #service-list {
@@ -185,6 +189,16 @@ body.no-url-bar #url-bar { display: none; }
   border-top: 1px solid var(--border);
 }
 
+.settings-footer {
+  margin-top: 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  word-break: break-all;
+  text-align: center;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 body.light .svc-icon {
   background: hsl(var(--hue, 260), 50%, 44%);
   color: #fff;
@@ -194,7 +208,7 @@ body.light .svc-icon {
 
 .svc-item.active .svc-icon {
   border-radius: 30%;
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-2);
 }
 
 .svc-item.drag-over-top::before,
@@ -294,19 +308,17 @@ body.light .svc-icon {
 
 .welcome-card { text-align: center; max-width: 360px; padding: 24px; }
 
-.welcome-logo {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-size: 34px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 16px;
+/* Wordmark: 1600x480 source, height 56px keeps the ratio; dark variant for
+ * the dark theme, light variant for body.light. */
+.welcome-wordmark {
+  height: 56px;
+  width: auto;
+  margin: 0 auto 18px;
 }
+.welcome-wordmark-dark { display: block; }
+.welcome-wordmark-light { display: none; }
+body.light .welcome-wordmark-dark { display: none; }
+body.light .welcome-wordmark-light { display: block; }
 
 .welcome-card h1 { font-size: 19px; font-weight: 600; margin-bottom: 8px; }
 .welcome-card p { color: var(--text-dim); margin-bottom: 20px; }

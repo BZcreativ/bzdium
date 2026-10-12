@@ -11,7 +11,7 @@
   <!-- Sidebar: exactly 72px wide. Nothing else may occupy x >= 72 except fixed overlays. -->
   <aside id="sidebar">
     <div id="logo" title="bzdium">
-      <span class="logo-letter">b</span>
+      <img class="logo-symbol" src="assets/symbol.svg" alt="" draggable="false">
       <span id="logo-badge" class="badge hidden" title="Total unread"></span>
     </div>
 
@@ -39,7 +39,8 @@
   <!-- Empty-state welcome panel (overlays the webview area only when there are no services) -->
   <div id="welcome" class="hidden">
     <div class="welcome-card">
-      <div class="welcome-logo">b</div>
+      <img class="welcome-wordmark welcome-wordmark-dark" src="assets/wordmark-dark.svg" alt="bzdium" draggable="false">
+      <img class="welcome-wordmark welcome-wordmark-light" src="assets/wordmark-light.svg" alt="bzdium" draggable="false">
       <h1>Welcome to bzdium</h1>
       <p>All your messengers in one light window.</p>
       <button id="welcome-add" class="primary-btn">Add your first service</button>
@@ -119,6 +120,9 @@
         <label class="checkbox-label">
           <input id="set-dark" type="checkbox"> Dark UI
         </label>
+        <label class="checkbox-label">
+          <input id="set-devmode" type="checkbox"> Developer mode (DevTools for troubleshooting)
+        </label>
         <p class="form-error hidden" id="settings-error"></p>
         <div class="modal-actions">
           <button type="button" class="ghost-btn" data-close>Cancel</button>
@@ -128,6 +132,10 @@
       <div class="config-actions">
         <button type="button" id="export-config-btn" class="ghost-btn">Export configuration…</button>
         <button type="button" id="import-config-btn" class="ghost-btn">Import configuration…</button>
+      </div>
+      <p id="settings-footer" class="settings-footer hidden"></p>
+      <div id="dev-actions" class="config-actions hidden">
+        <button type="button" id="devtools-ui-btn" class="ghost-btn">Inspect UI (DevTools)</button>
       </div>
     </div>
   </div>

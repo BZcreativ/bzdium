@@ -25,6 +25,7 @@ fn main() {
             "navigate_url",
             "export_config",
             "import_config",
+            "open_devtools",
             "report_title",
         ])),
     )
