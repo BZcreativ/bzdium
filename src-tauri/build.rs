@@ -9,7 +9,6 @@ fn main() {
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "get_state",
-            "get_settings",
             "update_settings",
             "get_recipes",
             "add_service",

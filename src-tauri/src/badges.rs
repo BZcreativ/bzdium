@@ -4,7 +4,11 @@ use crate::state::SharedState;
 
 /// JavaScript injected into every service webview. Polls `document.title`
 /// every 3 s and reports it to Rust so badges can be derived.
+///
+/// Local invariant: service ids are UUIDs by construction (add_service,
+/// import) — assert it here so this stays true even if callers change.
 pub fn init_script(service_id: &str) -> String {
+    debug_assert!(uuid::Uuid::parse_str(service_id).is_ok(), "service id must be a UUID");
     format!(
         r#"(function () {{
   var last = null;
@@ -58,10 +62,12 @@ pub fn parse_badge_count(title: &str) -> u32 {
 /// count; emits `state-changed` and retitles the window only when the count
 /// actually changed.
 ///
-/// The reported `id` is bound to the CALLING webview's label: a page in
-/// service A's webview can never set service B's badge (the remote capability
-/// grants `report_title` to every service webview, so binding is what makes
-/// that grant safe).
+/// Two gates (round-1 + round-2 review):
+/// 1. The reported `id` must match the CALLING webview's label.
+/// 2. The webview's last loaded URL must be on the service's home host —
+///    the label never changes when a page navigates, so without this a
+///    service tab walked to another origin could still forge badges.
+///    Unknown webviews fail closed.
 #[tauri::command]
 pub fn report_title(
     app: AppHandle,
@@ -76,6 +82,15 @@ pub fn report_title(
     let count = parse_badge_count(&title);
     let (total, snapshot) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
+        let home_url = match inner.service(&id) {
+            Some(service) => service.url.clone(),
+            None => return Err(format!("unknown service id {id}")),
+        };
+        if !crate::webviews::webview_on_home_origin(webview.label(), &home_url) {
+            // Off-origin (e.g. mid-OAuth redirect) — ignore silently; badge
+            // reporting resumes when the page returns to the service host.
+            return Ok(());
+        }
         match inner.service_mut(&id) {
             Some(service) if service.badge_count != count => {
                 service.badge_count = count;
@@ -152,9 +167,9 @@ mod tests {
 
     #[test]
     fn init_script_references_report_title_and_id() {
-        let script = init_script("abc-123");
+        let script = init_script("00000000-0000-4000-8000-00000000abc1");
         assert!(script.contains("report_title"));
-        assert!(script.contains("\"abc-123\""));
+        assert!(script.contains("\"00000000-0000-4000-8000-00000000abc1\""));
         assert!(script.contains("3000"));
     }
 }

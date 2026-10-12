@@ -30,8 +30,13 @@ pub const ICONS_DIR: &str = "icons";
 pub const MAX_ICON_BYTES: u64 = 256 * 1024;
 
 /// Sniffs the image type from magic bytes (never trusts the picked file
-/// name). Returns the canonical extension. SVGs are accepted as text and
-/// are only ever rendered through <img>, where scripts cannot execute.
+/// name). Returns the canonical extension. SVG acceptance is strict
+/// (round-2 N7): the document must START with `<svg` (after BOM/whitespace)
+/// or with an `<?xml` declaration followed by `<svg` — an HTML page that
+/// merely mentions `<svg` is rejected, and any DOCTYPE/ENTITY is rejected
+/// outright (also satisfies the XXE constraint: we never parse, but we
+/// refuse to store documents that carry entity machinery).
+/// SVGs are only ever rendered through <img>, where scripts cannot execute.
 fn sniff_image_type(bytes: &[u8]) -> Option<(&'static str, &'static str)> {
     if bytes.len() >= 8 && bytes[..8] == [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a] {
         return Some(("png", "image/png"));
@@ -43,7 +48,14 @@ fn sniff_image_type(bytes: &[u8]) -> Option<(&'static str, &'static str)> {
         return Some(("webp", "image/webp"));
     }
     let head = String::from_utf8_lossy(&bytes[..bytes.len().min(512)]).to_ascii_lowercase();
-    if head.contains("<svg") || head.trim_start().starts_with("<?xml") {
+    if head.contains("<!doctype") || head.contains("<!entity") {
+        return None;
+    }
+    let trimmed = head.trim_start_matches(['\u{feff}', ' ', '\t', '\r', '\n']);
+    if trimmed.starts_with("<svg") {
+        return Some(("svg", "image/svg+xml"));
+    }
+    if trimmed.starts_with("<?xml") && head.contains("<svg") {
         return Some(("svg", "image/svg+xml"));
     }
     None
@@ -53,9 +65,20 @@ fn icon_file_dir(data_dir: &std::path::Path) -> std::path::PathBuf {
     data_dir.join(ICONS_DIR)
 }
 
+/// Local invariant for every id that reaches a filesystem path or an
+/// injected script: service ids are UUIDs. Callers upstream guarantee it
+/// (add_service generates, import normalizes); this makes it true locally.
+fn uuid_or_reject(id: &str) -> bool {
+    uuid::Uuid::parse_str(id).is_ok()
+}
+
 /// Removes any stored icon file for the service (any extension), so a
 /// replacement with a different format does not leave stale files.
+/// No-ops for non-UUID ids (defense in depth, N13).
 fn remove_icon_files(data_dir: &std::path::Path, id: &str) {
+    if !uuid_or_reject(id) {
+        return;
+    }
     for ext in ["png", "jpg", "webp", "svg"] {
         let _ = std::fs::remove_file(icon_file_dir(data_dir).join(format!("{id}.{ext}")));
     }
@@ -98,6 +121,9 @@ pub async fn pick_service_icon(
             return Err(format!("unknown service id {id}"));
         }
         let data_dir = inner.data_dir.clone();
+        if !uuid_or_reject(&id) {
+            return Err(format!("invalid service id {id}"));
+        }
         let dir = icon_file_dir(&data_dir);
         std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create icons dir: {e}"))?;
         remove_icon_files(&data_dir, &id);
@@ -474,13 +500,25 @@ pub async fn update_service(
     };
     if now_disabled {
         // Disabled services keep no webview.
-        webviews::close_webview(&app, &id)?;
+        if let Err(e) = webviews::close_webview(&app, &id) {
+            eprintln!("update_service: webview close failed: {e}");
+            emit_snapshot(&app, &snapshot);
+            return Err(e);
+        }
     } else if url_changed && !was_hibernated {
-        // Recreate the webview at the new URL (off-lock).
-        webviews::close_webview(&app, &id)?;
-        webviews::create_service_webview(&app, &service, &data_dir, is_active)?;
-        if is_active {
-            webviews::show_only(&app, Some(&id))?;
+        // Recreate the webview at the new URL (off-lock). State is already
+        // persisted — on failure still emit so the UI matches disk (N10).
+        if let Err(e) = (|| {
+            webviews::close_webview(&app, &id)?;
+            webviews::create_service_webview(&app, &service, &data_dir, is_active)?;
+            if is_active {
+                webviews::show_only(&app, Some(&id))?;
+            }
+            Ok::<(), String>(())
+        })() {
+            eprintln!("update_service: webview recreate failed: {e}");
+            emit_snapshot(&app, &snapshot);
+            return Err(e);
         }
     }
     emit_snapshot(&app, &snapshot);
@@ -509,7 +547,11 @@ pub async fn remove_service(
         let data_dir = inner.data_dir.clone();
         (inner.snapshot(), data_dir)
     };
-    webviews::close_webview(&app, &id)?;
+    if let Err(e) = webviews::close_webview(&app, &id) {
+        eprintln!("remove_service: webview close failed: {e}");
+        emit_snapshot(&app, &snapshot);
+        return Err(e);
+    }
     // The session profile is unrecoverable garbage after removal (a re-added
     // service always gets a fresh UUID), so reclaim it. Best-effort: WebView2
     // may hold locks on the folder briefly after close.
@@ -723,7 +765,7 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
     // Phase 1 (locked): replace state + persist. Imported `startWithWindows`
     // is deliberately ignored (a config file must not silently flip the
     // HKCU Run key) — the current value is kept.
-    let first_id = {
+    let (first_id, keep_ids, data_dir) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
         let mut new_settings = config.settings;
         new_settings.start_with_windows = inner.settings.start_with_windows;
@@ -733,11 +775,15 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
         inner.active_service_id = None;
         inner.save_settings()?;
         inner.save_services()?;
-        inner
+        let first_id = inner
             .services
             .iter()
             .find(|s| s.enabled)
-            .map(|s| s.id.clone())
+            .map(|s| s.id.clone());
+        let keep_ids: std::collections::HashSet<String> =
+            inner.services.iter().map(|s| s.id.clone()).collect();
+        let data_dir = inner.data_dir.clone();
+        (first_id, keep_ids, data_dir)
     };
 
     // Phase 2 (unlocked): side effects. Activation failure must NOT abort
@@ -747,6 +793,9 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
             let _ = webview.close();
         }
     }
+    // Webviews are closed, so their profile dirs are unlockable: reclaim
+    // sessions and icons of services that no longer exist (round-2 N5).
+    reclaim_orphans(&data_dir, &keep_ids);
     if let Some(id) = &first_id {
         if let Err(e) = webviews::activate(&app, &state, id) {
             eprintln!("import: failed to activate {id}: {e}");
@@ -755,6 +804,33 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
     let snapshot = state.lock().map_err(|e| e.to_string())?.snapshot();
     emit_snapshot(&app, &snapshot);
     Ok(Some(ImportOutcome { state: snapshot, skipped }))
+}
+
+/// Deletes session dirs and icon files whose service id is not in `keep`.
+/// Replacing services via import must not leave old profiles behind
+/// forever (round-2 N5). Never touches dirs for ids still configured.
+fn reclaim_orphans(data_dir: &std::path::Path, keep: &std::collections::HashSet<String>) {
+    let sessions = data_dir.join(crate::storage::SESSIONS_DIR);
+    if let Ok(rd) = std::fs::read_dir(&sessions) {
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !keep.contains(&name) {
+                if let Err(e) = std::fs::remove_dir_all(entry.path()) {
+                    eprintln!("import: could not reclaim session dir {}: {e}", entry.path().display());
+                }
+            }
+        }
+    }
+    let icons = icon_file_dir(data_dir);
+    if let Ok(rd) = std::fs::read_dir(&icons) {
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let stem = name.split('.').next().unwrap_or("").to_string();
+            if !keep.contains(&stem) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -858,6 +934,45 @@ mod tests {
         assert_eq!(sniff_image_type(b"<?xml version=\"1.0\"?><svg/>").map(|t| t.0), Some("svg"));
         assert_eq!(sniff_image_type(b"not an image at all"), None);
         assert_eq!(sniff_image_type(&[]), None);
+    }
+
+    #[test]
+    fn svg_sniffing_is_strict() {
+        // HTML that merely mentions <svg must NOT pass as SVG (round-2 N7)
+        assert_eq!(sniff_image_type(b"<!DOCTYPE html><html><body><svg>hi</svg></body></html>").map(|t| t.0), None);
+        assert_eq!(sniff_image_type(b"<html><body><p>about <svg> tags</p></body></html>").map(|t| t.0), None);
+        // DOCTYPE/ENTITY rejected outright (never store entity machinery)
+        assert_eq!(sniff_image_type(b"<?xml version=\"1.0\"?><!DOCTYPE svg [<!ENTITY x \"y\">]><svg/>").map(|t| t.0), None);
+        assert_eq!(sniff_image_type(b"<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\"><svg/>").map(|t| t.0), None);
+        // BOM + leading whitespace before <svg is fine
+        assert_eq!(sniff_image_type(b"\xef\xbb\xbf  <svg/>").map(|t| t.0), Some("svg"));
+        // xml declaration WITHOUT svg in head is not an image
+        assert_eq!(sniff_image_type(b"<?xml version=\"1.0\"?><rss/>").map(|t| t.0), None);
+    }
+
+    #[test]
+    fn reclaim_orphans_removes_only_unknown_ids() {
+        let dir = std::env::temp_dir().join(format!(
+            "bzdium-reclaim-{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let sessions = dir.join(crate::storage::SESSIONS_DIR);
+        let icons = icon_file_dir(&dir);
+        std::fs::create_dir_all(&icons).unwrap();
+        std::fs::create_dir_all(sessions.join("11111111-1111-4111-8111-111111111111")).unwrap();
+        std::fs::create_dir_all(sessions.join("22222222-2222-4222-8222-222222222222")).unwrap();
+        std::fs::write(icons.join("11111111-1111-4111-8111-111111111111.png"), b"x").unwrap();
+        std::fs::write(icons.join("33333333-3333-4333-8333-333333333333.png"), b"x").unwrap();
+
+        let keep: std::collections::HashSet<String> =
+            ["11111111-1111-4111-8111-111111111111".to_string()].into_iter().collect();
+        reclaim_orphans(&dir, &keep);
+
+        assert!(sessions.join("11111111-1111-4111-8111-111111111111").exists());
+        assert!(!sessions.join("22222222-2222-4222-8222-222222222222").exists());
+        assert!(icons.join("11111111-1111-4111-8111-111111111111.png").exists());
+        assert!(!icons.join("33333333-3333-4333-8333-333333333333.png").exists());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

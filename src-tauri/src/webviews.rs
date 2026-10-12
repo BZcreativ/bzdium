@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::{LazyLock, Mutex};
 
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, WebviewUrl, Wry};
 
@@ -17,6 +19,59 @@ pub const WEBVIEW2_DOWNLOAD_URL: &str =
 
 pub fn label_for(service_id: &str) -> String {
     format!("service-{service_id}")
+}
+
+// ---------------------------------------------------------------------------
+// Last-loaded-URL registry (badge origin gate, round-2 finding N1)
+// ---------------------------------------------------------------------------
+
+/// Webview label -> last URL reported by its `on_page_load` hook. Written on
+/// the event loop (where the hook runs with the URL in hand), read from
+/// `report_title`. This exists because `Webview::url()` is a BLOCKING
+/// channel getter — calling it from a sync command on the main thread
+/// would self-deadlock — and because the webview LABEL never changes when
+/// a page navigates, so the label check alone cannot stop off-origin badge
+/// forgery.
+static WEBVIEW_URLS: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn record_webview_url(label: &str, url: &str) {
+    WEBVIEW_URLS
+        .lock()
+        .map(|mut m| m.insert(label.to_string(), url.to_string()))
+        .ok();
+}
+
+/// True when the webview's last loaded URL is on the service's home host
+/// (www-insensitive). Unknown webview or unparsable URLs fail CLOSED.
+pub fn webview_on_home_origin(label: &str, home_url: &str) -> bool {
+    let current = match WEBVIEW_URLS.lock() {
+        Ok(m) => match m.get(label) {
+            Some(u) => u.clone(),
+            None => return false,
+        },
+        Err(_) => return false,
+    };
+    hosts_match(&current, home_url)
+}
+
+fn strip_www(host: &str) -> &str {
+    host.strip_prefix("www.").unwrap_or(host)
+}
+
+fn hosts_match(a: &str, b: &str) -> bool {
+    match (
+        tauri::Url::parse(a.trim()),
+        tauri::Url::parse(b.trim()),
+    ) {
+        (Ok(a), Ok(b)) => match (a.host_str(), b.host_str()) {
+            (Some(a), Some(b)) => {
+                strip_www(a).eq_ignore_ascii_case(strip_www(b))
+            }
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 fn webview_error(e: impl std::fmt::Display) -> String {
@@ -58,9 +113,12 @@ pub fn create_service_webview(
         .data_directory(session_dir)
         .initialization_script(badges::init_script(&service.id))
         .on_page_load(|webview, payload| {
-            // Drives the URL bar. Deliberately lock-free: label + url only.
+            // Drives the URL bar and feeds the badge origin gate.
+            // Deliberately lock-free: label + url only.
             let owner = webview.app_handle().clone();
-            if let Some(id) = webview.label().strip_prefix("service-") {
+            let label = webview.label().to_string();
+            record_webview_url(&label, payload.url().as_str());
+            if let Some(id) = label.strip_prefix("service-") {
                 crate::state::emit_url_changed(&owner, id, payload.url().as_str());
             }
         })
@@ -160,6 +218,43 @@ pub fn sync_bounds(app: &AppHandle) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_matching_rules() {
+        assert!(hosts_match("https://web.whatsapp.com/", "https://web.whatsapp.com"));
+        assert!(hosts_match("https://www.instagram.com/x", "https://instagram.com"));
+        assert!(hosts_match(
+            "https://web.telegram.org/k/",
+            "https://web.telegram.org/"
+        ));
+        // off-origin navigation is rejected (round-2 N1 core case)
+        assert!(!hosts_match("https://evil.example/", "https://web.whatsapp.com/"));
+        // lookalike suffixes must not pass
+        assert!(!hosts_match("https://web.whatsapp.com.evil.example/", "https://web.whatsapp.com/"));
+        assert!(!hosts_match("not a url", "https://web.whatsapp.com/"));
+        assert!(!hosts_match("https://web.whatsapp.com/", "not a url"));
+    }
+
+    #[test]
+    fn origin_gate_fails_closed_for_unknown_webviews() {
+        assert!(!webview_on_home_origin("service-unknown", "https://web.whatsapp.com/"));
+    }
+
+    #[test]
+    fn origin_gate_tracks_recorded_urls() {
+        record_webview_url("service-test-a", "https://web.whatsapp.com/");
+        assert!(webview_on_home_origin("service-test-a", "https://web.whatsapp.com/"));
+        assert!(webview_on_home_origin("service-test-a", "https://www.web.whatsapp.com/"));
+        // navigation away from the service host stops badge reporting
+        record_webview_url("service-test-a", "https://accounts.google.com/");
+        assert!(webview_on_home_origin("service-test-a", "https://accounts.google.com/"));
+        assert!(!webview_on_home_origin("service-test-a", "https://web.whatsapp.com/"));
+    }
+}
+
 /// Activates a service: wakes it if hibernated, shows its webview, hides
 /// the others, resets its hibernation timer. Manages the state lock itself
 /// and NEVER holds it across webview operations — webview creation runs on
@@ -198,19 +293,33 @@ pub async fn set_active_service(
 ) -> Result<AppState, String> {
     match id {
         Some(id) => {
-            activate(&app, &state, &id)?;
+            // State may be persisted by activate before its webview op
+            // fails — emit the fresh state either way so the UI matches
+            // disk, then surface the error as a toast (N10 pattern).
+            if let Err(e) = activate(&app, &state, &id) {
+                eprintln!("set_active_service: activation failed: {e}");
+                if let Ok(inner) = state.lock() {
+                    let snapshot = inner.snapshot();
+                    drop(inner);
+                    emit_snapshot(&app, &snapshot);
+                }
+                return Err(e);
+            }
             let snapshot = state.lock().map_err(|e| e.to_string())?.snapshot();
             emit_snapshot(&app, &snapshot);
             Ok(snapshot)
         }
         None => {
-            let (snapshot, _) = {
+            let snapshot = {
                 let mut inner = state.lock().map_err(|e| e.to_string())?;
                 inner.active_service_id = None;
-                let s = inner.snapshot();
-                (s, ())
+                inner.snapshot()
             };
-            show_only(&app, None)?;
+            if let Err(e) = show_only(&app, None) {
+                eprintln!("set_active_service: hide-all failed: {e}");
+                emit_snapshot(&app, &snapshot);
+                return Err(e);
+            }
             emit_snapshot(&app, &snapshot);
             Ok(snapshot)
         }
@@ -395,7 +504,11 @@ pub async fn hibernate_service(
         inner.save_services()?;
         inner.snapshot()
     };
-    close_webview(&app, &id)?;
+    if let Err(e) = close_webview(&app, &id) {
+        eprintln!("hibernate_service: webview close failed: {e}");
+        emit_snapshot(&app, &snapshot);
+        return Err(e);
+    }
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
 }
@@ -422,9 +535,17 @@ pub async fn wake_service(
         let snapshot = inner.snapshot();
         (service, data_dir, is_active, snapshot)
     };
-    create_service_webview(&app, &service, &data_dir, is_active)?;
+    if let Err(e) = create_service_webview(&app, &service, &data_dir, is_active) {
+        eprintln!("wake_service: webview create failed: {e}");
+        emit_snapshot(&app, &snapshot);
+        return Err(e);
+    }
     if is_active {
-        show_only(&app, Some(&id))?;
+        if let Err(e) = show_only(&app, Some(&id)) {
+            eprintln!("wake_service: show failed: {e}");
+            emit_snapshot(&app, &snapshot);
+            return Err(e);
+        }
     }
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)

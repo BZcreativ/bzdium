@@ -139,13 +139,8 @@ impl StateInner {
 }
 
 /// Emits the `state-changed` event carrying the full snapshot to the UI
-/// webview only (spec section 6).
-pub fn emit_state_changed(app: &AppHandle, inner: &StateInner) {
-    emit_snapshot(app, &inner.snapshot());
-}
-
-/// Like [`emit_state_changed`] but from an already-built snapshot — lets
-/// callers release the state lock before emitting.
+/// webview only (spec section 6). Callers build the snapshot while holding
+/// the state lock and emit AFTER releasing it (threading contract §rule 2).
 pub fn emit_snapshot(app: &AppHandle, snapshot: &AppState) {
     if let Err(e) = app.emit_to(UI_WEBVIEW_LABEL, EVENT_STATE_CHANGED, snapshot) {
         eprintln!("failed to emit {EVENT_STATE_CHANGED}: {e}");

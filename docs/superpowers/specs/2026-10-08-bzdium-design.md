@@ -73,7 +73,7 @@ Data dir resolution: `<exe_dir>/bzdium-data` if creatable/writable, else
 Commands (UI → Rust): `get_state`, `add_service`, `update_service`,
 `remove_service`, `reorder_services`, `set_active_service`, `reload_service`,
 `navigate` (back/forward/home), `hibernate_service`, `wake_service`,
-`get_settings`, `update_settings`, `report_title` (from service webviews).
+`update_settings`, `report_title` (from service webviews).
 
 Events (Rust → UI): `state-changed` carrying the full serializable app state
 (services with badge counts + hibernated flag, settings). The UI re-renders from
@@ -175,7 +175,7 @@ interface AppState {
 | `navigate_url` | `{ id: ServiceId, url: string }` | `null` | URL bar "Go": validates https, navigates the service webview (creating it if hibernated). |
 | `export_config` | — | `string \| null` | Native save dialog → writes `{type:"bzdium-config",version:1,exportedAt,settings,services[]}` (services carry id/name/url/icon/enabled/order; runtime fields reset). `null` = user cancelled. Session folders are NOT part of the export. |
 | `import_config` | — | `{ state: AppState, skipped: string[] } \| null` | Native open dialog → validates → REPLACES all services + settings, closes all service webviews, activates the first enabled service. **Ids from the file are accepted only as well-formed hyphenated UUIDs, deduplicated; anything else (traversal paths, junk, duplicates) is replaced with a fresh UUID** — ids become `sessions/<id>` directory names and webview labels, so they must never be attacker-controlled strings. The imported `startWithWindows` value is IGNORED (a config file must not silently flip the HKCU Run key — the current setting is kept). Activation failure logs but never aborts the import. `null` = user cancelled. |
-| `report_title` | `{ id: ServiceId, title: string }` | `null` | Called BY service webviews (injected script); updates badge. **The `id` is bound to the calling webview's label** — a page can only ever report its own service (and the UI webview, label `main`, can never call it). Does NOT emit state-changed unless the badge count changed. Badge counts are capped at 999; totals use saturating addition. |
+| `report_title` | `{ id: ServiceId, title: string }` | `null` | Called BY service webviews (injected script); updates badge. THREE gates: (1) the `id` must match the calling webview's label; (2) the webview's **last loaded URL (tracked by the `on_page_load` registry) must be on the service's home host** — the label never changes on navigation, so this is what stops off-origin badge forgery (round-2 N1); unknown webviews fail closed; (3) badge counts capped at 999, totals saturating. Off-origin reports are ignored silently (badges resume when the page returns to the service host, e.g. after OAuth). |
 
 Every command that returns `AppState` also emits a `state-changed` event
 (payload: `AppState`) on the **UI webview only** after mutating state; the UI
@@ -211,7 +211,11 @@ badge pipeline needs an explicit app ACL manifest and a remote capability:
   which autogenerates `allow-<command>` permissions. Note: once an app manifest
   exists, **local** webviews must also be granted commands via capabilities.
 - `src-tauri/capabilities/default.json` — local capability on window `main`:
-  `core:default` + `allow-*` for all app commands except `report_title`.
+  `core:event:default` + `core:app:default` (exactly what dist/ uses) +
+  `allow-*` for all app commands except `report_title`. Deliberately NOT
+  `core:default`: that set includes `core:webview:default`, which grants
+  `allow-internal-toggle-devtools` — bypassing the server-side dev_mode gate
+  on `open_devtools` (round-2 N3).
 - `src-tauri/capabilities/service-webviews.json` — `local: false`,
   `remote.urls: ["https://*"]`, webviews `service-*`: ONLY
   `allow-report-title`. Remote pages can never reach any other command.
@@ -284,6 +288,19 @@ Rules:
    inside `setup`.
 4. The hibernation task follows the same three-phase pattern (decide+persist
    locked → close webviews unlocked → emit).
+5. If state was persisted and a subsequent webview op fails, the command
+   MUST still emit `state-changed` before returning `Err` (round-2 N10) —
+   the UI re-renders from the event and the error surfaces as a toast.
+6. `Webview::url()` is a BLOCKING channel getter — calling it from a sync
+   command (main thread) self-deadlocks. Last-loaded URLs are tracked
+   lock-free via the `on_page_load` registry instead (see report_title).
+7. `Webview::open_devtools` exists in release builds (devtools feature) but
+   is gated server-side on `settings.dev_mode`; the capability set grants no
+   other devtools path.
+8. Autostart is refused in portable layout (data dir beside the exe): the
+   HKCU Run entry would point at a movable, user-replaceable binary (N4).
+   Import replaces services wholesale and reclaims session/icon dirs of
+   ids no longer configured (N5).
 
 ### Single instance
 

@@ -19,10 +19,14 @@ fn get_state(state: State<'_, SharedState>) -> Result<AppState, String> {
     Ok(inner.snapshot())
 }
 
-#[tauri::command]
-fn get_settings(state: State<'_, SharedState>) -> Result<Settings, String> {
-    let inner = state.lock().map_err(|e| e.to_string())?;
-    Ok(inner.settings.clone())
+/// True when running in portable layout (data dir sits next to the exe).
+/// Autostart is refused in that mode: the HKCU Run entry would point at a
+/// movable, user-replaceable binary (round-2 N4).
+fn is_portable_layout(data_dir: &std::path::Path) -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join(storage::PORTABLE_DIR_NAME)))
+        .is_some_and(|portable| portable == data_dir)
 }
 
 #[tauri::command]
@@ -32,6 +36,21 @@ fn update_settings(
     settings: Settings,
 ) -> Result<AppState, String> {
     let mut inner = state.lock().map_err(|e| e.to_string())?;
+    let portable = is_portable_layout(&inner.data_dir);
+    if settings.start_with_windows && portable {
+        // Do not persist an unfulfillable promise: clear the flag before saving.
+        let mut settings = settings;
+        settings.start_with_windows = false;
+        inner.settings = settings;
+        inner.save_settings()?;
+        let snapshot = inner.snapshot();
+        drop(inner);
+        webviews::sync_bounds(&app);
+        emit_snapshot(&app, &snapshot);
+        return Err(
+            "Start with Windows is only available for installed copies — a portable exe is movable and user-replaceable.".to_string(),
+        );
+    }
     inner.settings = settings;
     inner.save_settings()?;
     autostart::apply(inner.settings.start_with_windows)?;
@@ -64,7 +83,6 @@ pub fn run() {
         .manage(Mutex::new(initial_state))
         .invoke_handler(tauri::generate_handler![
             get_state,
-            get_settings,
             update_settings,
             services::get_recipes,
             services::add_service,
