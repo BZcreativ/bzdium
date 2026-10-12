@@ -61,6 +61,19 @@ Build the installer with `npx @tauri-apps/cli build` (NSIS setup lands in `targe
 > re-run `cargo build --release` until it finishes. `src-tauri/.cargo/config.toml`
 > raises `RUST_MIN_STACK`, fixing the deterministic stack-overflow variant.
 
+## Security & credential storage
+
+Your logins live **only** in each service's WebView2 profile (`bzdium-data/sessions/<id>/` portable, `%APPDATA%\bzdium\sessions\` when installed) — bzdium itself never sees, stores, or transmits passwords or cookies. Concretely:
+
+- **Cookies are encrypted at rest** with a DPAPI key bound to your Windows user and machine (verified: `os_crypt.encrypted_key`, DPAPI-prefixed, in each profile's `Local State`). A copied or stolen `bzdium-data` folder does **not** decrypt on another machine or under another user. Note that *some* site data (e.g. parts of localStorage/IndexedDB) is not cookie-encrypted — treat the folder as sensitive anyway.
+- **Installed copies** keep data in `%APPDATA%\bzdium`, which Windows ACLs to your user only. Uninstalling removes the app but deliberately keeps this data.
+- **Portable copies** inherit the ACLs of wherever you put them. On a USB stick (no ACLs) anyone holding the stick holds the (DPAPI-encrypted) profiles — the cookies still won't decrypt elsewhere, but don't leave it behind.
+- **Config export** contains services + settings only — never sessions, cookies, or credentials.
+- App-written files contain no secrets: `services.json`/`settings.json` hold names, URLs, and toggles; nothing secret-shaped. Page titles are parsed to an unread count and discarded.
+- **Network:** bzdium itself makes no telemetry/update calls — the only network traffic is the web content you load. The IPC surface exposed to web pages is exactly one command (`report_title`, bound to the calling webview, badge counts capped), enforced by Tauri capabilities + a UI Content-Security-Policy.
+- Uploaded custom icons are validated by magic bytes (png/jpg/webp/svg ≤256 KB), stored locally, and rendered only in `<img>` contexts where SVG scripts cannot execute.
+- Developer mode (DevTools) is off by default and gated server-side.
+
 ## Debugging the UI
 
 Debug builds auto-open devtools on the UI webview. To script the UI webview over CDP:

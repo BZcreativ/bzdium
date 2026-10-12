@@ -157,8 +157,11 @@ pub fn get_service_icon(
     let Some(file_name) = file_name else {
         return Ok(None);
     };
-    // Only ever read back files we named ourselves ({uuid}.{known-ext}).
+    // Defense in depth: `custom_icon` could be hand-edited in services.json
+    // (e.g. "..\\..\\secrets.txt"). Only ever read back files we named
+    // ourselves: exactly "{uuid}.{known-ext}".
     let ext = file_name.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
+    let stem = &file_name[..file_name.len().saturating_sub(ext.len() + 1)];
     let mime = match ext.as_str() {
         "png" => "image/png",
         "jpg" => "image/jpeg",
@@ -166,6 +169,9 @@ pub fn get_service_icon(
         "svg" => "image/svg+xml",
         _ => return Ok(None),
     };
+    if Uuid::parse_str(stem).is_err() {
+        return Ok(None);
+    }
     let bytes = std::fs::read(icon_file_dir(&data_dir).join(&file_name))
         .map_err(|e| format!("cannot read icon: {e}"))
         .or_else(|e| {
