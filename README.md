@@ -39,8 +39,8 @@ Measured on Windows 11, 2 live messenger webviews.
 
 Two ways to run bzdium on Windows 10/11 x64:
 
-- **Installer** — [`bzdium_0.2.1_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.1/bzdium_0.2.1_x64-setup.exe) (2.8 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
-- **Portable** — [`bzdium-v0.2.1-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.1/bzdium-v0.2.1-x64-portable.exe) (12 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
+- **Installer** — [`bzdium_0.2.2_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.2/bzdium_0.2.2_x64-setup.exe) (2.8 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
+- **Portable** — [`bzdium-v0.2.2-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.2/bzdium-v0.2.2-x64-portable.exe) (12 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
 
 Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can fetch it if missing).
 
