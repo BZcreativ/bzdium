@@ -25,6 +25,7 @@ fn main() {
             "export_config",
             "import_config",
             "open_devtools",
+            "open_service_external",
             "pick_service_icon",
             "reset_service_icon",
             "get_service_icon",

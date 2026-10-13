@@ -1024,6 +1024,28 @@ mod tests {
         let s: Settings = serde_json::from_str(old).unwrap();
         assert!(s.show_url_bar);
         assert_eq!(Settings::default().show_url_bar, true);
+        // Same for the newer fields: an old file must not fail to parse, and
+        // must not silently opt the user into the in-app link window.
+        assert_eq!(s.link_target, crate::state::LinkTarget::Browser);
+        assert_eq!(Settings::default().link_target, crate::state::LinkTarget::Browser);
+        assert!(!s.dev_mode);
+    }
+
+    #[test]
+    fn link_target_round_trips_as_camel_case() {
+        // The UI sends/reads these exact strings; a rename would silently
+        // reset the setting on every save.
+        for (target, wire) in [
+            (crate::state::LinkTarget::Browser, "\"browser\""),
+            (crate::state::LinkTarget::Bzdium, "\"bzdium\""),
+        ] {
+            assert_eq!(serde_json::to_string(&target).unwrap(), wire);
+            let back: crate::state::LinkTarget = serde_json::from_str(wire).unwrap();
+            assert_eq!(back, target);
+        }
+        // An unknown value from a hand-edited settings.json is rejected
+        // rather than silently coerced.
+        assert!(serde_json::from_str::<crate::state::LinkTarget>("\"elsewhere\"").is_err());
     }
 
     #[test]

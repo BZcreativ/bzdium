@@ -102,6 +102,7 @@ pub fn run() {
             webviews::wake_service,
             webviews::set_overlay_mode,
             webviews::open_devtools,
+            webviews::open_service_external,
             badges::report_title,
         ])
         .setup(|app| {

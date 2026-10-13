@@ -18,7 +18,7 @@
       { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 }
     ],
     activeServiceId: "demo-1",
-    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false },
+    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, linkTarget: "browser" },
     totalBadgeCount: 15,
     dataDir: "demo"
   };
@@ -320,6 +320,9 @@
     });
     addCtxItem("Home", false, function () {
       cmd("navigate", { id: service.id, action: "home" }).catch(function () {});
+    });
+    addCtxItem("Open in browser", false, function () {
+      cmd("open_service_external", { id: service.id }).catch(function () {});
     });
     addCtxSep();
     if (service.hibernated) {
@@ -634,6 +637,7 @@
     $("set-urlbar").checked = s.showUrlBar !== false;
     $("set-dark").checked = s.darkUi !== false;
     $("set-devmode").checked = !!s.devMode;
+    $("set-link-bzdium").checked = s.linkTarget === "bzdium";
     $("settings-error").classList.add("hidden");
     refreshSettingsFooter();
     openModal("settings-modal");
@@ -678,7 +682,8 @@
         startWithWindows: $("set-autostart").checked,
         showUrlBar: $("set-urlbar").checked,
         darkUi: $("set-dark").checked,
-        devMode: $("set-devmode").checked
+        devMode: $("set-devmode").checked,
+        linkTarget: $("set-link-bzdium").checked ? "bzdium" : "browser"
       }
     }).then(function () { closeModal("settings-modal"); })
       .catch(function () {});
@@ -731,6 +736,7 @@
   var urlBar = $("url-bar");
   var urlInput = $("url-input");
   var urlGo = $("url-go");
+  var urlHome = $("url-home");
   var currentUrls = {};       // service id -> last reported url
   var urlEditing = false;
 
@@ -742,6 +748,7 @@
     var enabled = !!activeId;
     urlInput.disabled = !enabled;
     urlGo.disabled = !enabled;
+    urlHome.disabled = !enabled;
     if (!urlEditing) {
       urlInput.value = (activeId && currentUrls[activeId]) ||
         (activeId && (serviceById(activeId) || {}).url) || "";
@@ -778,6 +785,14 @@
   });
   urlGo.addEventListener("click", submitUrl);
 
+  /* Home: back to the active service's configured URL (same action as the
+   * context menu's "Home"). */
+  urlHome.addEventListener("click", function () {
+    if (!currentState || !currentState.activeServiceId) return;
+    cmd("navigate", { id: currentState.activeServiceId, action: "home" })
+      .catch(function () {});
+  });
+
   /* ---------------- Startup ---------------- */
 
   if (hasTauri) {
@@ -790,6 +805,11 @@
           urlInput.value = e.payload.url;
         }
       }
+    }).catch(function () {});
+    // Backend notices carry no command error channel (e.g. a failed
+    // "open this link in your browser" hand-off from a service webview).
+    tauri.event.listen("app-notice", function (e) {
+      if (typeof e.payload === "string" && e.payload) toast(e.payload);
     }).catch(function () {});
     // Brand manifest first so the initial render can resolve brand icons.
     loadBrandManifest()

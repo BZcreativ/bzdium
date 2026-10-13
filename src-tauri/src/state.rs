@@ -7,6 +7,8 @@ use tauri::{AppHandle, Emitter};
 
 pub const EVENT_STATE_CHANGED: &str = "state-changed";
 pub const EVENT_URL_CHANGED: &str = "url-changed";
+/// Transient UI message (`&str` payload) rendered as a toast by `app.js`.
+pub const EVENT_NOTICE: &str = "app-notice";
 pub const UI_WEBVIEW_LABEL: &str = "main";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -36,6 +38,18 @@ fn default_show_url_bar() -> bool {
     true
 }
 
+/// Where a service page's new-window links (`target="_blank"`,
+/// `window.open`) are opened.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum LinkTarget {
+    /// The OS default browser.
+    #[default]
+    Browser,
+    /// A separate bzdium window (own profile, under `<dataDir>/links/`).
+    Bzdium,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -50,6 +64,10 @@ pub struct Settings {
     /// Older settings.json files predate this field.
     #[serde(default)]
     pub dev_mode: bool,
+    /// Where new-window links from service pages open. Older settings.json
+    /// files predate this field; default to the OS browser.
+    #[serde(default)]
+    pub link_target: LinkTarget,
 }
 
 impl Default for Settings {
@@ -61,6 +79,7 @@ impl Default for Settings {
             dark_ui: true,
             show_url_bar: true,
             dev_mode: false,
+            link_target: LinkTarget::Browser,
         }
     }
 }
@@ -163,5 +182,16 @@ pub fn emit_url_changed(app: &AppHandle, service_id: &str, url: &str) {
         Payload { id: service_id, url },
     ) {
         eprintln!("failed to emit {EVENT_URL_CHANGED}: {e}");
+    }
+}
+
+/// Sends a transient, user-facing message to the UI webview (rendered as a
+/// toast). Needed for operations that have no command error channel — notably
+/// the `on_new_window` browser hand-off, which runs inside a wry callback.
+/// Without this a failure would be invisible: release builds set
+/// `windows_subsystem = "windows"`, so `eprintln!` has no console to reach.
+pub fn emit_notice(app: &AppHandle, message: &str) {
+    if let Err(e) = app.emit_to(UI_WEBVIEW_LABEL, EVENT_NOTICE, message) {
+        eprintln!("failed to emit {EVENT_NOTICE}: {e}");
     }
 }

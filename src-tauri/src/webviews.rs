@@ -59,6 +59,139 @@ fn strip_www(host: &str) -> &str {
     host.strip_prefix("www.").unwrap_or(host)
 }
 
+/// Page-initiated URLs may only ever reach the user's browser over http(s).
+/// Everything else (file:, custom schemes, javascript:, about:) is dropped —
+/// web content must not be able to launch protocol handlers.
+fn external_open_allowed(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+/// Opens a URL with the shell's default handler (the user's browser for
+/// http/https). Direct ShellExecuteW FFI — see Cargo.toml note on why the
+/// opener plugin was dropped.
+#[cfg(windows)]
+fn open_in_default_browser(url: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    // Safety: null parent HWND; wide-string args are valid for the call's
+    // lifetime; "open" verb + http(s) URL validated by the caller.
+    let verb: Vec<u16> = "open\0".encode_utf16().collect();
+    let wide: Vec<u16> = format!("{url}\0").encode_utf16().collect();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            wide.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // ShellExecuteW returns >32 on success.
+    if result as usize > 32 {
+        Ok(())
+    } else {
+        Err(format!("ShellExecuteW failed with code {}", result as isize))
+    }
+}
+
+#[cfg(not(windows))]
+fn open_in_default_browser(url: &str) -> Result<(), String> {
+    let _ = url;
+    Err("external links unsupported on this platform".to_string())
+}
+
+/// Shared profile for in-app link windows (`settings.linkTarget == "bzdium"`).
+/// wry requires distinct `data_directory`s only when the WebView2 environment
+/// *options* differ (see wry's `web_context.rs`); ours are identical for every
+/// webview, so a single shared profile is safe, keeps logins across link
+/// windows, and cannot grow without bound the way a per-window profile would.
+const LINKS_DIR: &str = "links";
+
+/// Last URL a service webview reported through `on_page_load`.
+fn current_webview_url(label: &str) -> Option<String> {
+    WEBVIEW_URLS.lock().ok().and_then(|m| m.get(label).cloned())
+}
+
+/// What to do with a page-initiated new window. `allow_in_app` is false for
+/// link windows themselves, so a page opened *inside* bzdium always sends its
+/// own popups to the real browser rather than nesting more windows.
+fn handle_new_window(app: &AppHandle, url: &tauri::Url, allow_in_app: bool) {
+    if !external_open_allowed(url.as_str()) {
+        return;
+    }
+    let in_app = allow_in_app
+        && app
+            .state::<SharedState>()
+            .lock()
+            .map(|inner| inner.settings.link_target == crate::state::LinkTarget::Bzdium)
+            .unwrap_or(false);
+    if in_app {
+        open_link_window(app, url);
+    } else if let Err(e) = open_in_default_browser(url.as_str()) {
+        crate::state::emit_notice(app, &format!("Could not open this link in your browser: {e}"));
+    }
+}
+
+/// Opens `url` in its own bzdium window. The webview is created on a plain
+/// thread rather than the message loop: webview creation pumps a nested
+/// message loop, and this runs inside wry's `NewWindowRequested` dispatch
+/// (see the threading contract in the design spec).
+fn open_link_window(app: &AppHandle, url: &tauri::Url) {
+    let handle = app.clone();
+    let target = url.clone();
+    std::thread::spawn(move || {
+        let profile = match handle.state::<SharedState>().lock() {
+            Ok(inner) => inner.data_dir.join(LINKS_DIR),
+            Err(_) => {
+                crate::state::emit_notice(
+                    &handle,
+                    "Could not open this link in bzdium: app state unavailable.",
+                );
+                return;
+            }
+        };
+        let _ = fs::create_dir_all(&profile);
+        let title = target.as_str().to_string();
+        let sink = handle.clone();
+        let built = tauri::WebviewWindowBuilder::new(
+            &handle,
+            format!("link-{}", uuid::Uuid::new_v4()),
+            WebviewUrl::External(target),
+        )
+        .title(title)
+        .inner_size(1024.0, 768.0)
+        .data_directory(profile)
+        .on_new_window(move |url, _features| {
+            handle_new_window(&sink, &url, false);
+            tauri::webview::NewWindowResponse::Deny
+        })
+        .build();
+        if let Err(e) = built {
+            crate::state::emit_notice(&handle, &format!("Could not open this link in bzdium: {e}"));
+        }
+    });
+}
+
+/// Opens the page a service is currently showing in the OS default browser
+/// (context menu → "Open in browser"). Falls back to the service's configured
+/// URL when its webview has not reported a load yet.
+#[tauri::command]
+pub fn open_service_external(state: State<'_, SharedState>, id: String) -> Result<(), String> {
+    let (configured, label) = {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        let service = inner
+            .service(&id)
+            .ok_or_else(|| format!("unknown service id {id}"))?;
+        (service.url.clone(), label_for(&id))
+    };
+    let url = current_webview_url(&label).unwrap_or(configured);
+    if !external_open_allowed(&url) {
+        return Err("only http(s) pages can be opened in the browser".to_string());
+    }
+    open_in_default_browser(&url)
+}
+
 fn hosts_match(a: &str, b: &str) -> bool {
     match (
         tauri::Url::parse(a.trim()),
@@ -109,6 +242,11 @@ pub fn create_service_webview(
     fs::create_dir_all(&session_dir).map_err(|e| format!("cannot create session dir: {e}"))?;
 
     let (position, size) = service_bounds(app, &window)?;
+    // `on_new_window` runs inside a wry callback, so it has no command return
+    // value to carry an error back to the UI. Clone the handle to report a
+    // failed hand-off as a toast — release builds have no console, where an
+    // `eprintln!` would be invisible.
+    let notice_sink = app.clone();
     let builder = tauri::webview::WebviewBuilder::<Wry>::new(label, WebviewUrl::External(url))
         .data_directory(session_dir)
         .initialization_script(badges::init_script(&service.id))
@@ -121,6 +259,14 @@ pub fn create_service_webview(
             if let Some(id) = label.strip_prefix("service-") {
                 crate::state::emit_url_changed(&owner, id, payload.url().as_str());
             }
+        })
+        .on_new_window(move |url, _features| {
+            // External links (target=_blank / window.open): http(s) goes to
+            // the default browser, or to a bzdium window when the user chose
+            // that in Settings; every other scheme is dropped and the page
+            // itself can never create an in-app popup.
+            handle_new_window(&notice_sink, &url, true);
+            tauri::webview::NewWindowResponse::Deny
         })
         .focused(visible);
     let webview = window
@@ -236,6 +382,18 @@ mod tests {
         assert!(!hosts_match("https://web.whatsapp.com.evil.example/", "https://web.whatsapp.com/"));
         assert!(!hosts_match("not a url", "https://web.whatsapp.com/"));
         assert!(!hosts_match("https://web.whatsapp.com/", "not a url"));
+    }
+
+    #[test]
+    fn external_open_scheme_guard() {
+        assert!(external_open_allowed("https://github.com/BZcreativ/bzdium"));
+        assert!(external_open_allowed("http://example.com/x"));
+        // never hand page-supplied non-http schemes to the OS
+        assert!(!external_open_allowed("file:///C:/Windows/system32/evil.exe"));
+        assert!(!external_open_allowed("ms-settings:privacy"));
+        assert!(!external_open_allowed("javascript:alert(1)"));
+        assert!(!external_open_allowed("about:blank"));
+        assert!(!external_open_allowed(""));
     }
 
     #[test]

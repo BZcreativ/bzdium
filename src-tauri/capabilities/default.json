@@ -7,7 +7,6 @@
     "core:event:default",
     "core:app:default",
     "allow-get-state",
-    "allow-get-settings",
     "allow-update-settings",
     "allow-get-recipes",
     "allow-add-service",
@@ -24,6 +23,7 @@
     "allow-export-config",
     "allow-import-config",
     "allow-open-devtools",
+    "allow-open-service-external",
     "allow-pick-service-icon",
     "allow-reset-service-icon",
     "allow-get-service-icon"

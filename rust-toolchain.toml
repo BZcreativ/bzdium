@@ -1,0 +1,21 @@
+# Pinned to the toolchain that reliably builds this dependency graph.
+#
+# rustc 1.99.0 (the current `stable` channel) failed consistently here while
+# compiling `webview2-com` v0.39.1 — a hard transitive dependency of wry, and
+# therefore unavoidable:
+#
+#   thread 'rustc' has overflowed its stack
+#   error: could not compile `webview2-com` (lib)     (0xc0000005, ACCESS_VIOLATION)
+#   ... and 0xc0000374 (HEAP_CORRUPTION) when given RUST_MIN_STACK=256MB
+#
+# rustc 1.98.0 builds the same tree cleanly.
+#
+# Caveat — these crashes are NOT fully deterministic. One release rebuild of
+# the `bzdium` crate itself also died with STATUS_ACCESS_VIOLATION under 1.98.0
+# and then succeeded unchanged on the next attempt. So if a build dies this
+# way, simply re-run it before investigating the code.
+#
+# This is unrelated to tauri-plugin-opener: `windows` 0.62.2, which appeared
+# while that plugin was being tried, is already required by webview2-com.
+[toolchain]
+channel = "1.98.0"

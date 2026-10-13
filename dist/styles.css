@@ -206,12 +206,22 @@ body.no-url-bar #url-bar { display: none; }
 
 #url-input:disabled { opacity: 0.45; }
 
-#url-go {
+#url-go,
+#url-home {
   height: 28px;
   min-width: 36px;
   padding: 0 10px;
   border-radius: 14px;
 }
+
+#url-home {
+  min-width: 32px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+#url-go:disabled,
+#url-home:disabled { opacity: 0.45; }
 
 .config-actions {
   display: flex;

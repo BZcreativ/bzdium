@@ -21,7 +21,20 @@ serde_json = "1"
 base64 = "0.22"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
 winreg = "0.56"
+# ShellExecuteW for external links. Direct FFI instead of tauri-plugin-opener:
+# no new plugin, no new ACL permission, and the `windows` crate the plugin
+# would pull in is already in the tree via wry. windows-sys 0.61 is likewise
+# already resolved. See rust-toolchain.toml for the compiler pin.
+# Win32_UI_WindowsAndMessaging is required by ShellExecuteW's own signature
+# (SHOW_WINDOW_CMD) and for the SW_SHOWNORMAL constant.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
 urlpattern = "0.6"

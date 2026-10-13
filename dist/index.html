@@ -31,6 +31,7 @@
 
   <!-- URL bar (hidden via body.no-url-bar when the setting is off) -->
   <div id="url-bar">
+    <button id="url-home" class="ghost-btn" title="Go to this service's home page" aria-label="Home">⌂</button>
     <input id="url-input" type="url" spellcheck="false" autocomplete="off"
            placeholder="https://" aria-label="Service URL">
     <button id="url-go" class="ghost-btn" title="Go" aria-label="Go to URL">→</button>
@@ -131,6 +132,9 @@
         </label>
         <label class="checkbox-label">
           <input id="set-devmode" type="checkbox"> Developer mode (DevTools for troubleshooting)
+        </label>
+        <label class="checkbox-label">
+          <input id="set-link-bzdium" type="checkbox"> Open links in a bzdium window instead of my browser
         </label>
         <p class="form-error hidden" id="settings-error"></p>
         <div class="modal-actions">

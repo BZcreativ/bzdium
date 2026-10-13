@@ -142,6 +142,7 @@ interface Settings {
   startWithWindows: boolean;    // default false
   showUrlBar: boolean;          // default true; hides/shows the URL bar strip
   devMode: boolean;             // default false; gates `open_devtools` + Inspect menu entries
+  linkTarget: "browser" | "bzdium"; // default "browser"; where service-page new-window links open
   darkUi: boolean;              // default true
 }
 
@@ -171,6 +172,7 @@ interface AppState {
 | `wake_service` | `{ id: ServiceId }` | `AppState` | Recreates the webview. |
 | `set_overlay_mode` | `{ open: boolean }` | `null` | While a UI overlay (modal / context menu) is open the UI webview must not be occluded by service webviews (they sit above it in z-order); `open: true` hides all service webviews, `open: false` re-shows the active one. No state change, no event. |
 | `open_devtools` | `{ id: ServiceId \| null }` | `null` | Developer mode only (`settings.devMode`, enforced server-side). Opens DevTools on the given service's webview, or the UI webview when `id` is null. Requires the tauri `devtools` feature (enabled — also works in release builds). |
+| `open_service_external` | `{ id: ServiceId }` | `null` | Context menu → "Open in browser": opens the page the service is currently showing (its last `on_page_load` URL, falling back to its configured URL) in the OS default browser. |
 | `update_settings` | `{ settings: Settings }` | `AppState` | Persists settings, applies side effects (autostart key, hibernation timer, re-applies webview geometry when `showUrlBar` changed). |
 | `navigate_url` | `{ id: ServiceId, url: string }` | `null` | URL bar "Go": validates https, navigates the service webview (creating it if hibernated). |
 | `export_config` | — | `string \| null` | Native save dialog → writes `{type:"bzdium-config",version:1,exportedAt,settings,services[]}` (services carry id/name/url/icon/enabled/order; runtime fields reset). `null` = user cancelled. Session folders are NOT part of the export. |
@@ -189,6 +191,10 @@ Events (Rust → UI webview only):
 - `url-changed` — payload `{ id: ServiceId, url: string }`, emitted from each
   service webview's `on_page_load` hook (Started and Finished) to drive the
   URL bar. The hook is lock-free by design.
+- `app-notice` — payload `string`; a transient user-facing message rendered as
+  a toast by `app.js`. Used where an operation has no command error channel,
+  e.g. a failed browser hand-off from `on_new_window` (release builds set
+  `windows_subsystem = "windows"`, so an `eprintln!` would go nowhere).
 
 ### URL bar
 
@@ -200,6 +206,10 @@ Events (Rust → UI webview only):
   `navigate_url` (auto-prefixes `https://`); Esc → blur + restore.
 - Rust re-applies service webview geometry whenever the toggle changes
   (`update_settings` calls `sync_bounds`).
+- A **Home** button (`⌂`) sits left of the input and runs the same
+  `navigate { action: "home" }` as the context-menu entry, returning the
+  active service to its configured URL. It is enabled/disabled together with
+  the input and Go button.
 
 ### ACL / remote IPC (Tauri v2 specifics — normative)
 
@@ -309,6 +319,47 @@ share the UI webview's WebView2 profile
 (`%LOCALAPPDATA%/com.bzdium.app/EBWebView`) and corrupt each other's IPC,
 ending in an application hang. `tauri-plugin-single-instance` is registered
 first in the builder; a second launch surfaces the existing window and exits.
+
+### External links (new-window policy)
+
+Service pages opening new windows (`target="_blank"`, `window.open`) never
+create in-app popups. Every service webview installs an `on_new_window`
+handler, and `settings.linkTarget` chooses where an http(s) URL goes:
+
+- `"browser"` (**default**) — the OS default browser, via `ShellExecuteW`.
+- `"bzdium"` — a separate bzdium window. All such windows share one WebView2
+  profile at `<dataDir>/links/`, so logins persist between them and the folder
+  cannot grow without bound (wry only requires distinct `data_directory`s when
+  the WebView2 environment *options* differ, and ours are identical). A link
+  window's own popups always go to the real browser, so in-app windows cannot
+  nest.
+
+Every other scheme (`file:`, `ms-settings:`, `javascript:`, custom protocols)
+is dropped, so web content can never launch OS protocol handlers. A link
+window is labelled `link-<uuid>`, which matches no capability, so remote
+content inside it has no command access at all. Normal same-tab navigation
+stays inside the service webview by design.
+
+Why the handler is mandatory, not optional: wry installs a
+`NewWindowRequested` handler only when one is configured, and its fallback is
+`args.SetHandled(true)` with no action (`wry-0.57.0/src/webview2/mod.rs`,
+the `else` branch) — the popup is *silently swallowed*. A service webview
+without `on_new_window` therefore appears to ignore every `target="_blank"`
+link. Tauri leaves `new_window_handler` as `None` by default, so this must be
+set explicitly on every service webview.
+
+The browser hand-off is a direct `ShellExecuteW` FFI call (`windows-sys` 0.61,
+a Windows-only dependency) rather than `tauri-plugin-opener`, so there is no
+new plugin, no new frontend permission and no new command in the ACL manifest.
+
+Note on the toolchain: this is unrelated to the opener plugin. `windows`
+0.62.2 — the version that appeared while the plugin was being tried — is
+already a hard transitive dependency of `webview2-com`, and therefore of wry
+itself. The real constraint is that rustc 1.99.0 failed consistently here
+while compiling `webview2-com` v0.39.1 (`STATUS_ACCESS_VIOLATION`, and
+`STATUS_HEAP_CORRUPTION` when given a larger compiler stack), so the build is
+pinned to 1.98.0 by `rust-toolchain.toml`. Those rustc crashes are not fully
+deterministic — if a build dies this way, re-run it before investigating.
 
 ### Service webview injection (backend-owned)
 
