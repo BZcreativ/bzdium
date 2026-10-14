@@ -54,15 +54,15 @@ Download from the [Latest Release (v0.2.6)](https://github.com/BZcreativ/bzdium/
   sudo dnf install ./bzdium-0.2.6-1.x86_64.rpm
   # or: sudo rpm -i bzdium-0.2.6-1.x86_64.rpm
   ```
-- **Universal AppImage** — [`bzdium_0.2.6_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.6/bzdium_0.2.6_amd64.AppImage) (101 MB):
+- **Universal AppImage** — [`bzdium_0.2.6_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.6/bzdium_0.2.6_amd64.AppImage) (84 MB):
   ```bash
   chmod +x bzdium_0.2.6_amd64.AppImage && ./bzdium_0.2.6_amd64.AppImage
   ```
-- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.6-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.6/bzdium-bin-0.2.6-1-x86_64.pkg.tar.zst) (4.1 MB):
+- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst) (4.1 MB, still the v0.2.5 build — the badge fixes are already in the AppImage above):
   ```bash
-  sudo pacman -U bzdium-bin-0.2.6-1-x86_64.pkg.tar.zst
+  sudo pacman -U bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.6-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.6/bzdium-0.2.6-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.6/bzdium-0.2.6-linux-x64.tgz) (4.3 MB):
+- **Portable Tarball** — [`bzdium-0.2.5-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-0.2.5-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-0.2.5-linux-x64.tgz) (4.3 MB, also the v0.2.5 build):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
@@ -115,6 +115,7 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
   - Fixed badges silently breaking on services served from non-default HTTPS ports (e.g. `:8443`) — the Tauri capability pattern now covers all HTTPS ports.
   - `ignore TLS errors` now actually works on Windows (previously stored but only honored on Linux); scoped per service, verified against a self-signed endpoint.
   - Badge poller no longer runs inside iframes: kills the recurring Tauri IPC 500 errors in the console and stops the `__TAURI__` bridge from leaking into third-party frames (OAuth, reCAPTCHA).
+  - Linux packages rebuilt for this release: `.deb`, `.rpm`, and `.AppImage` (glibc, built on Ubuntu 24.04).
 - **v0.2.5**:
   - Added per-service "Ignore TLS certificate errors" option (with disclaimer) for self-signed/private-CA endpoints, honored on Linux.
 - **v0.2.4**:
