@@ -6,6 +6,8 @@ mod state;
 mod storage;
 mod tray;
 mod webviews;
+#[cfg(target_os = "linux")]
+pub mod linux_layout;
 
 use std::sync::Mutex;
 
@@ -125,6 +127,10 @@ pub fn run() {
             let window = app
                 .get_window(state::UI_WEBVIEW_LABEL)
                 .expect("main window must exist");
+
+            #[cfg(target_os = "linux")]
+            linux_layout::init_layout(&window).map_err(|e| e.to_string())?;
+
             let handle = app.handle().clone();
             window.on_window_event(move |event| match event {
                 WindowEvent::CloseRequested { api, .. } => {

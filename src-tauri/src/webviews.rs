@@ -281,6 +281,12 @@ pub fn create_service_webview(
     let webview = window
         .add_child(builder, position, size)
         .map_err(webview_error)?;
+
+    #[cfg(target_os = "linux")]
+    {
+        crate::linux_layout::attach_service(&window, &webview, position, size)?;
+    }
+
     if visible {
         let _ = webview.set_focus();
     } else {
@@ -352,6 +358,8 @@ pub fn show_only(app: &AppHandle, active_id: Option<&str>) -> Result<(), String>
             webview.hide().map_err(|e| e.to_string())?;
         }
     }
+    #[cfg(target_os = "linux")]
+    crate::linux_layout::sync_all_bounds(&window, position, size, active_id)?;
     Ok(())
 }
 
@@ -370,6 +378,14 @@ pub fn sync_bounds(app: &AppHandle) {
         }
         let _ = webview.set_position(position);
         let _ = webview.set_size(size);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let active_id = {
+            let state: tauri::State<'_, SharedState> = app.state();
+            state.lock().ok().and_then(|i| i.active_service_id.clone())
+        };
+        let _ = crate::linux_layout::sync_all_bounds(&window, position, size, active_id.as_deref());
     }
 }
 
