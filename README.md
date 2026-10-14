@@ -1,12 +1,12 @@
 # bzdium
 
-**A lightweight, portable multi-messenger for Windows x64 — the [Ferdium](https://github.com/ferdium/ferdium-app) concept, re-implemented from scratch in Rust.**
+**A lightweight, portable multi-messenger for Linux and Windows x64 — the [Ferdium](https://github.com/ferdium/ferdium-app) concept, re-implemented from scratch in Rust.**
 
 <video src="https://github.com/BZcreativ/bzdium/releases/download/v0.2.1/bzdium-demo.mp4" controls muted width="640"></video>
 
 *(15-second overview — [docs/demo.mp4](docs/demo.mp4) in this repo)*
 
-One window, all your messengers: WhatsApp, Telegram, Discord, Slack, Gmail and 50+ more as real, isolated web apps — with unread badges, hibernation for low RAM, and a single ~12 MB portable exe. No Electron, no bundled Chromium: bzdium uses the system WebView2 runtime.
+One window, all your messengers: WhatsApp, Telegram, Discord, Slack, Gmail and 50+ more as real, isolated web apps — with unread badges, hibernation for low RAM, and a single portable binary. No Electron, no bundled Chromium: bzdium uses the native system webview runtime (WebKitGTK on Linux, WebView2 on Windows).
 
 > **Relationship to Ferdium:** bzdium is an independent, from-scratch re-implementation of the Ferdium *concept* (one window, many messaging services, per-service session isolation, unread badges, hibernation). It contains **no Ferdium code** — the original is Electron/JavaScript and licensed AGPL-3.0; bzdium is Rust + [Tauri](https://v2.tauri.app) + vanilla JS. All credit for the original idea and UX goes to the Ferdium team and its Ferdi/Franz ancestors.
 
@@ -14,30 +14,61 @@ One window, all your messengers: WhatsApp, Telegram, Discord, Slack, Gmail and 5
 
 Ferdium is a great idea in a heavy package: full Chromium per app, hundreds of MB of RAM at idle, and for this author, crashes. bzdium keeps the idea and drops the weight:
 
-| | Ferdium (Electron) | bzdium (Rust/WebView2) |
+| | Ferdium (Electron) | bzdium (Rust / Native Webview) |
 |---|---|---|
-| Bundle | ~100 MB installer, bundled Chromium | single **~12 MB** exe, system WebView2 |
+| Bundle | ~100 MB installer, bundled Chromium | single **~4–12 MB** binary, system WebKitGTK / WebView2 |
 | Idle RAM | 300–600+ MB | **~30 MB** |
-| Per-service isolation | Chromium partitions | real WebView2 profiles under `bzdium-data/sessions/` |
+| Per-service isolation | Chromium partitions | isolated browser profiles under `bzdium-data/sessions/` |
 | Recipes | 700+ (per-service JS hacks) | 60 popular web clients + any custom https URL |
 | Crash safety | — | atomic JSON writes, corrupt-file quarantine |
+| Platforms | Windows, macOS, Linux | Linux x64, Windows 10/11 x64 |
 
-Measured on Windows 11, 2 live messenger webviews.
+Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 ## Features
 
-- **Single portable `bzdium.exe`** — data lives in `bzdium-data\` next to it (falls back to `%APPDATA%\bzdium` on read-only media)
+- **Portable binary & native packages** — data lives in `bzdium-data/` next to the binary (falls back to `~/.local/share/bzdium` on Linux or `%APPDATA%\bzdium` on Windows for read-only installations)
 - **60 built-in services** (messaging, mail, social, AI, productivity) + custom URLs for anything self-hosted
-- **Persistent isolated sessions** — each service gets its own WebView2 profile; logins survive restarts
+- **Persistent isolated sessions** — each service gets its own browser profile; logins survive restarts
 - **Unread badges** parsed from page titles (capped, spoof-resistant: a page can only ever report its own count)
 - **Hibernation** — idle services' webviews are closed after N minutes and wake on click, freeing RAM
-- **URL bar** with live URL display and a visibility toggle
+- **URL bar** with live URL display, visibility toggle, and Home button
+- **External link control** — open in OS default browser (via `xdg-open` / `ShellExecuteW`) or inside an isolated in-app bzdium window
 - **Workspace export / import** — settings + services as a JSON file (service ids preserved, so local sessions reconnect)
-- Dark/light UI, system tray + minimize-to-tray, start-with-Windows, drag-to-reorder, single-instance
+- Dark/light UI, system tray + minimize-to-tray, drag-to-reorder, single-instance
 
 ## Install
 
-Two ways to run bzdium on Windows 10/11 x64:
+### Linux x64
+
+Download from the [Latest Release (v0.2.4)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.4) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.4)):
+
+- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.4_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium_0.2.4_amd64.deb) (5.1 MB):
+  ```bash
+  sudo apt install ./bzdium_0.2.4_amd64.deb
+  # or: sudo dpkg -i bzdium_0.2.4_amd64.deb
+  ```
+- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.4-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-0.2.4-1.x86_64.rpm) (5.1 MB):
+  ```bash
+  sudo dnf install ./bzdium-0.2.4-1.x86_64.rpm
+  # or: sudo rpm -i bzdium-0.2.4-1.x86_64.rpm
+  ```
+- **Universal AppImage** — [`bzdium_0.2.4_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium_0.2.4_amd64.AppImage) (101 MB):
+  ```bash
+  chmod +x bzdium_0.2.4_amd64.AppImage && ./bzdium_0.2.4_amd64.AppImage
+  ```
+- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.4-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-bin-0.2.4-1-x86_64.pkg.tar.zst) (4.1 MB):
+  ```bash
+  sudo pacman -U bzdium-bin-0.2.4-1-x86_64.pkg.tar.zst
+  ```
+- **Portable Tarball** — [`bzdium-0.2.4-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-0.2.4-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-0.2.4-linux-x64.tgz) (4.3 MB):
+  Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
+
+*Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
+
+### Windows 10/11 x64
+
+Download from the [Latest Release (v0.2.4)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.4):
 
 - **Installer** — [`bzdium_0.2.4_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium_0.2.4_x64-setup.exe) (2.8 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
 - **Portable** — [`bzdium-v0.2.4-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-v0.2.4-x64-portable.exe) (12 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
@@ -46,39 +77,69 @@ Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can
 
 ## Build
 
-Requires the MSVC toolchain and the WebView2 runtime (preinstalled on Windows 10/11).
+### Prerequisites
 
-```
+- **Linux**: GCC/Clang, `pkg-config`, `libwebkit2gtk-4.1-dev` (or `webkit2gtk-4.1`), `libgtk-3-dev`, `libayatana-appindicator3-dev`.
+- **Windows**: MSVC toolchain, WebView2 runtime (preinstalled on Windows 10/11).
+
+```bash
 cd src-tauri
-cargo build --release        # -> target/release/bzdium.exe
-cargo test                   # 22 tests incl. IPC/security contracts
+cargo build --release        # -> target/release/bzdium (or bzdium.exe)
+cargo test                   # 32 tests incl. IPC/security contracts
 ```
 
-Build the installer with `npx @tauri-apps/cli build` (NSIS setup lands in `target/release/bundle/nsis/`), or see **Install** above for released binaries.
+Build distribution packages:
+- **Linux (deb, rpm, AppImage)**: `npx @tauri-apps/cli build --bundles deb,rpm,appimage`
+- **Windows (NSIS setup)**: `npx @tauri-apps/cli build` (installer lands in `target/release/bundle/nsis/`)
 
-> Toolchain note (this machine): rustc 1.98/1.99 intermittently crashes inside
-> the compiler itself (memory corruption signature). Builds are incremental —
-> re-run `cargo build --release` until it finishes. `src-tauri/.cargo/config.toml`
-> raises `RUST_MIN_STACK`, fixing the deterministic stack-overflow variant.
+> Toolchain note: rustc 1.98.0 is pinned via `rust-toolchain.toml` for compiler stability.
 
 ## Security & credential storage
 
-Your logins live **only** in each service's WebView2 profile (`bzdium-data/sessions/<id>/` portable, `%APPDATA%\bzdium\sessions\` when installed) — bzdium itself never sees, stores, or transmits passwords or cookies. Concretely:
+Your logins live **only** in each service's isolated browser profile (`bzdium-data/sessions/<id>/` portable, `~/.local/share/bzdium/sessions/` on Linux, `%APPDATA%\bzdium\sessions\` on Windows when installed) — bzdium itself never sees, stores, or transmits passwords or cookies. Concretely:
 
-- **Cookies are encrypted at rest** with a DPAPI key bound to your Windows user and machine (verified: `os_crypt.encrypted_key`, DPAPI-prefixed, in each profile's `Local State`). A copied or stolen `bzdium-data` folder does **not** decrypt on another machine or under another user. Note that *some* site data (e.g. parts of localStorage/IndexedDB) is not cookie-encrypted — treat the folder as sensitive anyway.
-- **Installed copies** keep data in `%APPDATA%\bzdium`, which Windows ACLs to your user only. Uninstalling removes the app but deliberately keeps this data.
-- **Portable copies** inherit the ACLs of wherever you put them. On a USB stick (no ACLs) anyone holding the stick holds the (DPAPI-encrypted) profiles — the cookies still won't decrypt elsewhere, but don't leave it behind.
+- **Windows profiles** encrypt cookies at rest with a DPAPI key bound to your Windows user and machine (`os_crypt.encrypted_key`, DPAPI-prefixed, in each profile's `Local State`). A copied `bzdium-data` folder does not decrypt on another machine or under another user.
+- **Linux profiles** isolate state per service into independent WebKitGTK user-data contexts, secured by Unix permissions (read/write restricted to your user UID).
+- **Installed copies** keep data in `~/.local/share/bzdium` (Linux) or `%APPDATA%\bzdium` (Windows), protected by standard OS user boundaries. Uninstalling removes the app binary while preserving your session data.
+- **Portable copies** inherit the ACLs/permissions of wherever you put them. On a USB stick anyone holding the physical drive holds the profile folders — treat portable folders as sensitive.
 - **Config export** contains services + settings only — never sessions, cookies, or credentials.
 - App-written files contain no secrets: `services.json`/`settings.json` hold names, URLs, and toggles; nothing secret-shaped. Page titles are parsed to an unread count and discarded.
 - **Network:** bzdium itself makes no telemetry/update calls — the only network traffic is the web content you load. The IPC surface exposed to web pages is exactly one command (`report_title`, bound to the calling webview, badge counts capped), enforced by Tauri capabilities + a UI Content-Security-Policy.
 - Uploaded custom icons are validated by magic bytes (png/jpg/webp/svg ≤256 KB), stored locally, and rendered only in `<img>` contexts where SVG scripts cannot execute.
 - Developer mode (DevTools) is off by default and gated server-side.
 
+## Release History
+
+- **v0.2.4**:
+  - Added Linux x64 support and official bundles: `.deb`, `.rpm`, `.tar.gz`/`.tgz`, `.AppImage`, and Arch `.pkg.tar.zst`.
+  - Fixed external link routing: service links now open via system default browser (`xdg-open` on Linux, `ShellExecuteW` on Windows).
+  - Added Home button (`⌂`) and context menu "Open in browser".
+  - Configurable link target (`settings.linkTarget`: default browser or isolated in-app window).
+  - Linux XDG user data directory fallback (`~/.local/share/bzdium`).
+- **v0.2.3**:
+  - Security hardening: origin-gated badge reporting (`webview_on_home_origin`), lock-free URL tracking.
+  - Closed devtools bypass and restricted capabilities.
+  - Pinned rustc 1.98.0 toolchain for stable MSVC compilation.
+- **v0.2.2**:
+  - Rebranding with custom icons and visual monograms.
+  - Built-in icons for 60 services and custom icon image sniffing/validation (PNG/JPEG/WEBP/SVG).
+  - Official NSIS Windows installer alongside portable executable.
+- **v0.2.1**:
+  - Initial public portable Windows x64 release.
+  - 15-second product demo video walkthrough.
+- **v0.2.0**:
+  - Expanded built-in service catalog to 60 services across messaging, email, social, AI, and productivity.
+  - Added URL bar with live URL display and visibility toggle.
+  - Workspace configuration export & import with atomic JSON writes.
+- **v0.1.0**:
+  - Proof of concept: from-scratch Rust + Tauri multi-webview architecture replacing Ferdium's heavy Electron runtime.
+  - Isolated per-service session cookies, unread badge counter, and RAM hibernation task.
+
 ## Debugging the UI
 
 Debug builds auto-open devtools on the UI webview. To script the UI webview over CDP:
 
-```
+```bash
 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" ./bzdium.exe
 # then open http://127.0.0.1:9222/json/list
 ```
@@ -101,4 +162,4 @@ service ids.
 - [Ferdium](https://github.com/ferdium/ferdium-app) and its ancestors
   ([Ferdi](https://github.com/getferdi/ferdi), [Franz](https://meetfranz.com)) — the concept
 - [Tauri](https://v2.tauri.app) + [wry](https://github.com/tauri-apps/wry) — the app framework
-- Microsoft WebView2 — the rendering engine
+- Microsoft WebView2 & WebKitGTK — the rendering engines
