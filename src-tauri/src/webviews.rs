@@ -61,9 +61,21 @@ fn strip_www(host: &str) -> &str {
 
 /// Page-initiated URLs may only ever reach the user's browser over http(s).
 /// Everything else (file:, custom schemes, javascript:, about:) is dropped —
-/// web content must not be able to launch protocol handlers.
+/// web content must not be able to launch protocol handlers. The check is
+/// parse-based (not a string prefix) so tricks like uppercase schemes,
+/// leading control characters, or an empty host cannot slip past, and any
+/// embedded NUL/control byte hard-fails before the string reaches
+/// ShellExecuteW/xdg-open.
 fn external_open_allowed(url: &str) -> bool {
-    url.starts_with("http://") || url.starts_with("https://")
+    if url.bytes().any(|b| b < 0x20 || b == 0x7f) {
+        return false;
+    }
+    match tauri::Url::parse(url) {
+        Ok(parsed) => {
+            matches!(parsed.scheme(), "http" | "https") && !parsed.host_str().unwrap_or("").is_empty()
+        }
+        Err(_) => false,
+    }
 }
 
 /// Opens a URL with the shell's default handler (the user's browser for
@@ -117,6 +129,55 @@ fn open_in_default_browser(url: &str) -> Result<(), String> {
 /// windows, and cannot grow without bound the way a per-window profile would.
 const LINKS_DIR: &str = "links";
 
+/// Upper bound on simultaneously open link windows (round-3 finding 2). A
+/// page scripting `window.open(...)` in a loop must not be able to spawn
+/// unbounded windows/threads; beyond the cap links fall back to a notice.
+const MAX_LINK_WINDOWS: usize = 5;
+
+/// Labels of link windows hidden because the main window went to the tray.
+/// Restored (not recreated) when the main window is shown again, so an
+/// in-progress read is not lost to a stray click on the close button.
+static TRAY_HIDDEN_LINKS: LazyLock<Mutex<Vec<String>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+fn link_window_count(app: &AppHandle) -> usize {
+    app.webviews()
+        .iter()
+        .filter(|(label, _)| label.starts_with("link-"))
+        .count()
+}
+
+/// Hides every visible link window and remembers it for `restore_link_windows`.
+pub fn hide_link_windows(app: &AppHandle) {
+    let mut hidden = match TRAY_HIDDEN_LINKS.lock() {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    hidden.clear();
+    for (label, _) in app.webviews() {
+        let label = label.to_string();
+        if !label.starts_with("link-") {
+            continue;
+        }
+        if let Some(window) = app.get_window(&label) {
+            if window.is_visible().unwrap_or(false) {
+                let _ = window.hide();
+                hidden.push(label);
+            }
+        }
+    }
+}
+
+/// Re-shows link windows hidden by `hide_link_windows` (tray restore).
+pub fn restore_link_windows(app: &AppHandle) {
+    if let Ok(mut hidden) = TRAY_HIDDEN_LINKS.lock() {
+        for label in hidden.drain(..) {
+            if let Some(window) = app.get_window(&label) {
+                let _ = window.show();
+            }
+        }
+    }
+}
+
 /// Last URL a service webview reported through `on_page_load`.
 fn current_webview_url(label: &str) -> Option<String> {
     WEBVIEW_URLS.lock().ok().and_then(|m| m.get(label).cloned())
@@ -147,6 +208,13 @@ fn handle_new_window(app: &AppHandle, url: &tauri::Url, allow_in_app: bool) {
 /// message loop, and this runs inside wry's `NewWindowRequested` dispatch
 /// (see the threading contract in the design spec).
 fn open_link_window(app: &AppHandle, url: &tauri::Url) {
+    if link_window_count(app) >= MAX_LINK_WINDOWS {
+        crate::state::emit_notice(
+            app,
+            "Too many link windows are open — close one before opening more links in bzdium.",
+        );
+        return;
+    }
     let handle = app.clone();
     let target = url.clone();
     std::thread::spawn(move || {
@@ -435,6 +503,14 @@ mod tests {
         assert!(!external_open_allowed("javascript:alert(1)"));
         assert!(!external_open_allowed("about:blank"));
         assert!(!external_open_allowed(""));
+        // parse-level hardening: control bytes / NUL / hostless http URLs
+        // must not reach the OS handler; an uppercase-but-http(s) URL is
+        // still an http(s) URL and stays allowed
+        assert!(!external_open_allowed("https://example.com/\u{0}calc"));
+        assert!(!external_open_allowed("java\tscript:alert(1)"));
+        assert!(external_open_allowed("HTTPS://EXAMPLE.COM/x"));
+        assert!(!external_open_allowed("http://?query-without-host"));
+        assert!(!external_open_allowed("https://"));
     }
 
     #[test]

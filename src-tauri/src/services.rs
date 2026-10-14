@@ -103,15 +103,16 @@ pub async fn pick_service_icon(
         return Ok(state.lock().map_err(|e| e.to_string())?.snapshot());
     };
     let path = file.into_path().map_err(|e| format!("invalid file: {e}"))?;
-    let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read file: {e}"))?;
-    if meta.len() > MAX_ICON_BYTES {
+    // Read first, then enforce the cap on what we actually got — a
+    // stat-then-read pair races a swap of the picked file for a bigger one.
+    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read file: {e}"))?;
+    if bytes.len() as u64 > MAX_ICON_BYTES {
         return Err(format!(
             "Icon is {} KB; the limit is {} KB.",
-            meta.len() / 1024,
+            bytes.len() as u64 / 1024,
             MAX_ICON_BYTES / 1024
         ));
     }
-    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read file: {e}"))?;
     let (ext, _mime) =
         sniff_image_type(&bytes).ok_or_else(|| "Not a supported image (png, jpg, webp, svg).".to_string())?;
 
@@ -316,6 +317,31 @@ pub fn recipes() -> Vec<Recipe> {
     .collect()
 }
 
+/// Whether disabling TLS verification is acceptable for this URL
+/// (round-3 finding 3). The option exists for self-hosted services with
+/// self-signed certificates; on a built-in public recipe host (WhatsApp,
+/// Discord, Gmail, …) it would expose all of that service's traffic to
+/// MITM interception on hostile networks, so it is refused there.
+/// Matching is exact-host (www-insensitive) against the recipe catalog —
+/// self-hosted instances on other hosts stay allowed.
+pub fn tls_bypass_allowed_for_url(url: &str) -> bool {
+    let Ok(parsed) = Url::parse(url.trim()) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
+    let host = host.strip_prefix("www.").unwrap_or(&host);
+    !recipes().iter().any(|r| {
+        Url::parse(&r.url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+            .map(|h| h.strip_prefix("www.").unwrap_or(&h).to_string() == host)
+            .unwrap_or(false)
+    })
+}
+
 /// Resolves a brand icon slug from a service URL's host (used for custom
 /// URLs and when a service's URL is edited). Hosts without a bundled icon
 /// return None -> monogram fallback.
@@ -410,6 +436,11 @@ pub async fn add_service(
     ignore_tls_errors: Option<bool>,
 ) -> Result<AppState, String> {
     let url = validate_https_url(&url)?;
+    if ignore_tls_errors.unwrap_or(false) && !tls_bypass_allowed_for_url(&url) {
+        return Err(
+            "TLS verification can only be disabled for self-hosted services, not for a built-in public service — doing so would expose all of its traffic to interception.".to_string(),
+        );
+    }
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("service name must not be empty".to_string());
@@ -468,6 +499,12 @@ pub async fn update_service(
     ignore_tls_errors: Option<bool>,
 ) -> Result<AppState, String> {
     let url = validate_https_url(&url)?;
+    let requested_tls_bypass = ignore_tls_errors.unwrap_or(false);
+    if requested_tls_bypass && !tls_bypass_allowed_for_url(&url) {
+        return Err(
+            "TLS verification can only be disabled for self-hosted services, not for a built-in public service — doing so would expose all of its traffic to interception.".to_string(),
+        );
+    }
     let (url_changed, tls_changed, was_hibernated, now_disabled, service, data_dir, is_active, snapshot) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
         let (url_changed, tls_changed, was_hibernated, now_disabled) = {
@@ -475,12 +512,19 @@ pub async fn update_service(
                 .service_mut(&id)
                 .ok_or_else(|| format!("unknown service id {id}"))?;
             let url_changed = service.url != url;
-            let ignore_tls = ignore_tls_errors.unwrap_or(service.ignore_tls_errors);
-            let tls_changed = service.ignore_tls_errors != ignore_tls;
+            let previous_tls = service.ignore_tls_errors;
             service.name = name.trim().to_string();
             service.url = url;
             service.icon = icon;
+            // Legacy configs may carry the bypass on a public recipe host —
+            // silently downgrade there even when the edit didn't touch the
+            // flag (explicit requests were already rejected above).
+            let ignore_tls = ignore_tls_errors.unwrap_or(previous_tls)
+                && tls_bypass_allowed_for_url(&service.url);
             service.ignore_tls_errors = ignore_tls;
+            // Compute after the sanitize: a legacy downgrade must still
+            // trigger the webview rebuild that re-enables TLS verification.
+            let tls_changed = previous_tls != ignore_tls;
             let was_enabled = service.enabled;
             service.enabled = enabled;
             // A URL change re-identifies the service: refresh the default
@@ -727,6 +771,16 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
         return Ok(None);
     };
     let path = file.into_path().map_err(|e| format!("invalid file: {e}"))?;
+    // Refuse to slurp an unbounded file: a config is a few KiB, anything
+    // larger is either corruption or something that isn't a config at all.
+    const MAX_CONFIG_BYTES: u64 = 2 * 1024 * 1024;
+    let size = std::fs::metadata(&path).map_err(|e| format!("cannot stat {}: {e}", path.display()))?.len();
+    if size > MAX_CONFIG_BYTES {
+        return Err(format!(
+            "config file is too large ({} bytes, max {})",
+            size, MAX_CONFIG_BYTES
+        ));
+    }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let config: ConfigFile =
         serde_json::from_str(&text).map_err(|e| format!("not a bzdium config file: {e}"))?;
@@ -753,6 +807,10 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
             skipped.push(format!("(unnamed: {url})"));
             continue;
         }
+        // Downgrade any bypass targeting a public recipe host —
+        // imports from other tools may carry it, and importing must not
+        // silently widen interception exposure.
+        let ignore_tls = s.ignore_tls_errors && tls_bypass_allowed_for_url(&url);
         services.push(Service {
             id: normalize_imported_id(&s.id, &mut seen_ids),
             name,
@@ -767,7 +825,7 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
             custom_icon: None,
             hibernated: false,
             badge_count: 0,
-            ignore_tls_errors: s.ignore_tls_errors,
+            ignore_tls_errors: ignore_tls,
         });
     }
     services.sort_by_key(|s| s.order);
@@ -1085,5 +1143,33 @@ mod tests {
             assert!(!id.contains('\\') && !id.contains('/') && !id.contains(".."));
             assert_eq!(id.chars().filter(|c| *c == '-').count(), 4);
         }
+    }
+
+    #[test]
+    fn tls_bypass_refused_on_public_recipe_hosts() {
+        // Public recipe hosts (exact, www-variant, port, path) are refused —
+        // a bypass there would expose all of that service's traffic to MITM.
+        assert!(!tls_bypass_allowed_for_url("https://web.whatsapp.com"));
+        assert!(!tls_bypass_allowed_for_url("https://web.whatsapp.com/"));
+        assert!(!tls_bypass_allowed_for_url("https://web.whatsapp.com:443/app"));
+        assert!(!tls_bypass_allowed_for_url("https://mail.google.com"));
+        assert!(!tls_bypass_allowed_for_url("https://discord.com/app"));
+        assert!(!tls_bypass_allowed_for_url("https://app.slack.com/client"));
+        // Lookalikes and non-recipe hosts stay allowed (self-hosted installs).
+        assert!(tls_bypass_allowed_for_url("https://web.whatsapp.com.evil.example"));
+        assert!(tls_bypass_allowed_for_url("https://whatsapp.local"));
+        assert!(tls_bypass_allowed_for_url("https://nas.example.com:8443"));
+        // Garbage fails closed.
+        assert!(!tls_bypass_allowed_for_url("not a url"));
+        assert!(!tls_bypass_allowed_for_url(""));
+    }
+
+    #[test]
+    fn tls_bypass_www_variant_matches_recipe() {
+        // Recipe hosts are stored with or without www.; the matcher strips
+        // www. on both sides, so a bypass on the www form of a recipe host
+        // must also be refused.
+        assert!(!tls_bypass_allowed_for_url("https://www.dropbox.com"));
+        assert!(!tls_bypass_allowed_for_url("https://dropbox.com"));
     }
 }

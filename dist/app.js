@@ -247,6 +247,12 @@
     btn.className = "svc-item";
     btn.dataset.id = service.id;
     btn.title = service.name;
+    // TLS verification is disabled for this service — flag it so the
+    // weakened security posture is visible at a glance (hover explains).
+    if (service.ignoreTlsErrors) {
+      btn.classList.add("tls-bypass");
+      btn.title += " — TLS verification is OFF for this service";
+    }
     btn.draggable = true;
     btn.style.setProperty("--hue", String(hashString(service.name || "") % 360));
     if (service.id === activeServiceId) btn.classList.add("active");
@@ -267,6 +273,13 @@
       zz.className = "zz";
       zz.textContent = "zZ";
       btn.appendChild(zz);
+    }
+
+    if (service.ignoreTlsErrors) {
+      var tls = document.createElement("span");
+      tls.className = "tls-warn";
+      tls.textContent = "⚠";
+      btn.appendChild(tls);
     }
 
     btn.addEventListener("click", function () {

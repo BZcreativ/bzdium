@@ -295,6 +295,25 @@ body.light .svc-icon-brand {
   pointer-events: none;
 }
 
+/* TLS verification disabled for this service — visible-at-a-glance flag. */
+.svc-item .tls-warn {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  font-size: 10px;
+  line-height: 1;
+  color: #ffb020;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 15px;
+  height: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
 .badge {
   position: absolute;
   top: -3px;

@@ -79,6 +79,7 @@ pub fn run() {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
+                webviews::restore_link_windows(app);
             }
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -146,6 +147,10 @@ pub fn run() {
                         if let Some(window) = handle.get_window(state::UI_WEBVIEW_LABEL) {
                             let _ = window.hide();
                         }
+                        // Link windows are top-level: hide them too, or a
+                        // "minimize to tray" would leave orphan windows on
+                        // the desktop (round-3 finding 2).
+                        webviews::hide_link_windows(&handle);
                     }
                 }
                 WindowEvent::Resized(_) => webviews::sync_bounds(&handle),

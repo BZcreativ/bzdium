@@ -32,9 +32,11 @@ pub fn setup_tray(app: &mut App) -> tauri::Result<()> {
                 if let Some(window) = app.get_window(crate::state::UI_WEBVIEW_LABEL) {
                     if window.is_visible().unwrap_or(false) {
                         let _ = window.hide();
+                        crate::webviews::hide_link_windows(&app);
                     } else {
                         let _ = window.show();
                         let _ = window.set_focus();
+                        crate::webviews::restore_link_windows(&app);
                     }
                 }
             }
