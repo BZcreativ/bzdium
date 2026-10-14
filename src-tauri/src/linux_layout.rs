@@ -14,6 +14,7 @@
 
 use gtk::prelude::*;
 use tauri::{LogicalPosition, LogicalSize, Manager, Webview, Window};
+use webkit2gtk::{WebContextExt, WebViewExt, WebsiteDataManagerExt};
 
 fn find_fixed(vbox: &gtk::Box) -> Option<gtk::Fixed> {
     vbox.children()
@@ -47,12 +48,13 @@ pub fn init_layout(window: &Window) -> Result<(), String> {
 }
 
 /// Moves a newly created service webview from vbox into the GtkFixed container
-/// at the requested (x, y) coordinates and size.
+/// at the requested (x, y) coordinates and size, and configures TLS error policy.
 pub fn attach_service(
     window: &Window,
     webview: &Webview,
     pos: LogicalPosition<f64>,
     size: LogicalSize<f64>,
+    ignore_tls_errors: bool,
 ) -> Result<(), String> {
     let window_ = window.clone();
     let x = pos.x.round() as i32;
@@ -65,6 +67,26 @@ pub fn attach_service(
             let Ok(vbox) = window_.default_vbox() else { return; };
             let Some(fixed) = find_fixed(&vbox) else { return; };
             let widget = platform_wv.inner();
+
+            if ignore_tls_errors {
+                if let Some(context) = widget.web_context() {
+                    if let Some(data_manager) = context.website_data_manager() {
+                        data_manager.set_tls_errors_policy(webkit2gtk::TLSErrorsPolicy::Ignore);
+                    }
+                    #[allow(deprecated)]
+                    context.set_tls_errors_policy(webkit2gtk::TLSErrorsPolicy::Ignore);
+                }
+                widget.connect_load_failed_with_tls_errors(move |_wv, failing_uri, _cert, _flags| {
+                    eprintln!("[bzdium] ignoring TLS certificate error for {failing_uri}");
+                    true
+                });
+            } else if let Some(context) = widget.web_context() {
+                if let Some(data_manager) = context.website_data_manager() {
+                    data_manager.set_tls_errors_policy(webkit2gtk::TLSErrorsPolicy::Fail);
+                }
+                #[allow(deprecated)]
+                context.set_tls_errors_policy(webkit2gtk::TLSErrorsPolicy::Fail);
+            }
 
             if let Some(parent) = widget.parent() {
                 if let Ok(container) = parent.downcast::<gtk::Container>() {

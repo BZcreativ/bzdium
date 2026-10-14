@@ -407,6 +407,7 @@ pub async fn add_service(
     url: String,
     icon: String,
     icon_id: Option<String>,
+    ignore_tls_errors: Option<bool>,
 ) -> Result<AppState, String> {
     let url = validate_https_url(&url)?;
     let name = name.trim().to_string();
@@ -431,6 +432,7 @@ pub async fn add_service(
         custom_icon: None,
         hibernated: false,
         badge_count: 0,
+        ignore_tls_errors: ignore_tls_errors.unwrap_or(false),
     };
     inner.services.push(service.clone());
     inner.save_services()?;
@@ -463,18 +465,22 @@ pub async fn update_service(
     url: String,
     icon: String,
     enabled: bool,
+    ignore_tls_errors: Option<bool>,
 ) -> Result<AppState, String> {
     let url = validate_https_url(&url)?;
-    let (url_changed, was_hibernated, now_disabled, service, data_dir, is_active, snapshot) = {
+    let (url_changed, tls_changed, was_hibernated, now_disabled, service, data_dir, is_active, snapshot) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
-        let (url_changed, was_hibernated, now_disabled) = {
+        let (url_changed, tls_changed, was_hibernated, now_disabled) = {
             let service = inner
                 .service_mut(&id)
                 .ok_or_else(|| format!("unknown service id {id}"))?;
             let url_changed = service.url != url;
+            let ignore_tls = ignore_tls_errors.unwrap_or(service.ignore_tls_errors);
+            let tls_changed = service.ignore_tls_errors != ignore_tls;
             service.name = name.trim().to_string();
             service.url = url;
             service.icon = icon;
+            service.ignore_tls_errors = ignore_tls;
             let was_enabled = service.enabled;
             service.enabled = enabled;
             // A URL change re-identifies the service: refresh the default
@@ -482,7 +488,7 @@ pub async fn update_service(
             if url_changed && service.custom_icon.is_none() {
                 service.icon_id = brand_slug_for_url(&service.url);
             }
-            (url_changed, service.hibernated, was_enabled && !enabled)
+            (url_changed, tls_changed, service.hibernated, was_enabled && !enabled)
         };
         if now_disabled {
             // Disabling closes the webview and releases the active tab.
@@ -496,7 +502,7 @@ pub async fn update_service(
         let data_dir = inner.data_dir.clone();
         let is_active = inner.active_service_id.as_deref() == Some(id.as_str());
         let snapshot = inner.snapshot();
-        (url_changed, was_hibernated, now_disabled, service, data_dir, is_active, snapshot)
+        (url_changed, tls_changed, was_hibernated, now_disabled, service, data_dir, is_active, snapshot)
     };
     if now_disabled {
         // Disabled services keep no webview.
@@ -505,9 +511,9 @@ pub async fn update_service(
             emit_snapshot(&app, &snapshot);
             return Err(e);
         }
-    } else if url_changed && !was_hibernated {
-        // Recreate the webview at the new URL (off-lock). State is already
-        // persisted — on failure still emit so the UI matches disk (N10).
+    } else if (url_changed || tls_changed) && !was_hibernated {
+        // Recreate the webview at the new URL / new TLS settings (off-lock).
+        // State is already persisted — on failure still emit so the UI matches disk (N10).
         if let Err(e) = (|| {
             webviews::close_webview(&app, &id)?;
             webviews::create_service_webview(&app, &service, &data_dir, is_active)?;
@@ -601,6 +607,8 @@ pub struct ConfigService {
     pub order: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_id: Option<String>,
+    #[serde(default)]
+    pub ignore_tls_errors: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -677,6 +685,7 @@ pub async fn export_config(app: AppHandle, state: State<'_, SharedState>) -> Res
                 enabled: s.enabled,
                 order: s.order,
                 icon_id: s.icon_id.clone(),
+                ignore_tls_errors: s.ignore_tls_errors,
             })
             .collect();
         services.sort_by_key(|s| s.order);
@@ -758,6 +767,7 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
             custom_icon: None,
             hibernated: false,
             badge_count: 0,
+            ignore_tls_errors: s.ignore_tls_errors,
         });
     }
     services.sort_by_key(|s| s.order);
@@ -1000,6 +1010,7 @@ mod tests {
                 enabled: true,
                 order: 0,
                 icon_id: Some("telegram".to_string()),
+                ignore_tls_errors: false,
             }],
         };
         let json = serde_json::to_string_pretty(&config).unwrap();

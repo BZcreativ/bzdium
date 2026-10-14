@@ -29,6 +29,7 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 - **Portable binary & native packages** — data lives in `bzdium-data/` next to the binary (falls back to `~/.local/share/bzdium` on Linux or `%APPDATA%\bzdium` on Windows for read-only installations)
 - **60 built-in services** (messaging, mail, social, AI, productivity) + custom URLs for anything self-hosted
+- **Homelab & self-hosted support** — option to trust invalid / self-signed TLS certificates with clear security disclaimers
 - **Persistent isolated sessions** — each service gets its own browser profile; logins survive restarts
 - **Unread badges** parsed from page titles (capped, spoof-resistant: a page can only ever report its own count)
 - **Hibernation** — idle services' webviews are closed after N minutes and wake on click, freeing RAM
@@ -41,34 +42,34 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 ### Linux x64
 
-Download from the [Latest Release (v0.2.4)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.4) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.4)):
+Download from the [Latest Release (v0.2.5)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.5) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.5)):
 
-- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.4_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium_0.2.4_amd64.deb) (5.1 MB):
+- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.5_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium_0.2.5_amd64.deb) (5.1 MB):
   ```bash
-  sudo apt install ./bzdium_0.2.4_amd64.deb
-  # or: sudo dpkg -i bzdium_0.2.4_amd64.deb
+  sudo apt install ./bzdium_0.2.5_amd64.deb
+  # or: sudo dpkg -i bzdium_0.2.5_amd64.deb
   ```
-- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.4-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-0.2.4-1.x86_64.rpm) (5.1 MB):
+- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.5-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-0.2.5-1.x86_64.rpm) (5.1 MB):
   ```bash
-  sudo dnf install ./bzdium-0.2.4-1.x86_64.rpm
-  # or: sudo rpm -i bzdium-0.2.4-1.x86_64.rpm
+  sudo dnf install ./bzdium-0.2.5-1.x86_64.rpm
+  # or: sudo rpm -i bzdium-0.2.5-1.x86_64.rpm
   ```
-- **Universal AppImage** — [`bzdium_0.2.4_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium_0.2.4_amd64.AppImage) (101 MB):
+- **Universal AppImage** — [`bzdium_0.2.5_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium_0.2.5_amd64.AppImage) (101 MB):
   ```bash
-  chmod +x bzdium_0.2.4_amd64.AppImage && ./bzdium_0.2.4_amd64.AppImage
+  chmod +x bzdium_0.2.5_amd64.AppImage && ./bzdium_0.2.5_amd64.AppImage
   ```
-- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.4-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-bin-0.2.4-1-x86_64.pkg.tar.zst) (4.1 MB):
+- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst) (4.1 MB):
   ```bash
-  sudo pacman -U bzdium-bin-0.2.4-1-x86_64.pkg.tar.zst
+  sudo pacman -U bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.4-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-0.2.4-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-0.2.4-linux-x64.tgz) (4.3 MB):
+- **Portable Tarball** — [`bzdium-0.2.5-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-0.2.5-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-0.2.5-linux-x64.tgz) (4.3 MB):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
 
 ### Windows 10/11 x64
 
-Download from the [Latest Release (v0.2.4)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.4):
+Download from the [Latest Release](https://github.com/BZcreativ/bzdium/releases/latest):
 
 - **Installer** — [`bzdium_0.2.4_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium_0.2.4_x64-setup.exe) (2.8 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
 - **Portable** — [`bzdium-v0.2.4-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.4/bzdium-v0.2.4-x64-portable.exe) (12 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.

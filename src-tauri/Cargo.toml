@@ -1,6 +1,6 @@
 [package]
 name = "bzdium"
-version = "0.2.4"
+version = "0.2.5"
 description = "bzdium — a light multi-messenger (Rust/WebView2 port of the Ferdium concept)"
 edition = "2021"
 rust-version = "1.77"
@@ -23,6 +23,7 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+webkit2gtk = "2.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

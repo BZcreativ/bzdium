@@ -210,11 +210,13 @@ mod tests {
             custom_icon: Some("3f6b2c5e-7a1d-4c9f-9b2e-1d0f8a7c6b5a.png".to_string()),
             hibernated: true,
             badge_count: 4,
+            ignore_tls_errors: true,
         };
         let json = serde_json::to_string(&service).unwrap();
         assert!(json.contains("\"badgeCount\":4"));
         assert!(json.contains("\"hibernated\":true"));
         assert!(json.contains("\"iconId\":\"whatsapp\""));
+        assert!(json.contains("\"ignoreTlsErrors\":true"));
         let back: Service = serde_json::from_str(&json).unwrap();
         assert_eq!(service, back);
 
@@ -225,6 +227,7 @@ mod tests {
         assert_eq!(parsed.badge_count, 0);
         assert_eq!(parsed.icon_id, None);
         assert_eq!(parsed.custom_icon, None);
+        assert!(!parsed.ignore_tls_errors);
     }
 
     #[test]

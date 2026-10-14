@@ -469,6 +469,18 @@ body.light .welcome-wordmark-light { display: block; }
 
 .checkbox-label input { accent-color: var(--accent); width: 15px; height: 15px; }
 
+.field-disclaimer {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid #eab308;
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 2px 0 6px 0;
+}
+
 .form-error { color: var(--danger); font-size: 12px; }
 
 .modal-actions {

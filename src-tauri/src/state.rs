@@ -32,6 +32,8 @@ pub struct Service {
     pub hibernated: bool,
     #[serde(default)]
     pub badge_count: u32,
+    #[serde(default)]
+    pub ignore_tls_errors: bool,
 }
 
 fn default_show_url_bar() -> bool {

@@ -519,6 +519,7 @@
 
   function openAddModal() {
     $("add-form").reset();
+    $("add-ignore-tls").checked = false;
     $("add-error").classList.add("hidden");
     addIconTouched = false;
     renderRecipes(recipesCache || []);
@@ -548,13 +549,14 @@
     var url = $("add-url").value.trim();
     var icon = $("add-icon").value.trim() || defaultIconFor(name);
     var iconId = $("add-icon-id").value.trim() || null;
+    var ignoreTlsErrors = $("add-ignore-tls").checked;
     var err = validateServiceForm(name, url);
     if (err) {
       $("add-error").textContent = err;
       $("add-error").classList.remove("hidden");
       return;
     }
-    cmd("add_service", { name: name, url: url, icon: icon, iconId: iconId })
+    cmd("add_service", { name: name, url: url, icon: icon, iconId: iconId, ignoreTlsErrors: ignoreTlsErrors })
       .then(function () { closeModal("add-modal"); })
       .catch(function () {});
   });
@@ -599,6 +601,7 @@
     $("edit-url").value = service.url;
     $("edit-icon").value = service.icon || defaultIconFor(service.name);
     $("edit-enabled").checked = service.enabled !== false;
+    $("edit-ignore-tls").checked = !!service.ignoreTlsErrors;
     $("edit-error").classList.add("hidden");
     refreshEditIconPreview();
     openModal("edit-modal");
@@ -611,6 +614,7 @@
     var name = $("edit-name").value.trim();
     var url = $("edit-url").value.trim();
     var icon = $("edit-icon").value.trim() || defaultIconFor(name);
+    var ignoreTlsErrors = $("edit-ignore-tls").checked;
     var err = validateServiceForm(name, url);
     if (err) {
       $("edit-error").textContent = err;
@@ -622,7 +626,8 @@
       name: name,
       url: url,
       icon: icon,
-      enabled: $("edit-enabled").checked
+      enabled: $("edit-enabled").checked,
+      ignoreTlsErrors: ignoreTlsErrors
     }).then(function () { closeModal("edit-modal"); editingId = null; })
       .catch(function () {});
   });

@@ -66,6 +66,10 @@
         <label>Icon letter
           <input id="add-icon" type="text" maxlength="2" autocomplete="off" placeholder="M">
         </label>
+        <label class="checkbox-label">
+          <input id="add-ignore-tls" type="checkbox"> Trust invalid / self-signed TLS certificates
+        </label>
+        <p class="field-disclaimer">⚠️ Warning: Disabling TLS verification allows self-signed or incomplete certificates (common in homelab/self-hosted services), but exposes communication to potential interception on untrusted networks.</p>
         <input id="add-icon-id" type="hidden" value="">
         <p class="form-error hidden" id="add-error"></p>
         <div class="modal-actions">
@@ -101,6 +105,10 @@
         <label class="checkbox-label">
           <input id="edit-enabled" type="checkbox"> Enabled
         </label>
+        <label class="checkbox-label">
+          <input id="edit-ignore-tls" type="checkbox"> Trust invalid / self-signed TLS certificates
+        </label>
+        <p class="field-disclaimer">⚠️ Warning: Disabling TLS verification allows self-signed or incomplete certificates (common in homelab/self-hosted services), but exposes communication to potential interception on untrusted networks.</p>
         <p class="form-error hidden" id="edit-error"></p>
         <div class="modal-actions">
           <button type="button" class="ghost-btn" data-close>Cancel</button>

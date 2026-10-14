@@ -284,7 +284,7 @@ pub fn create_service_webview(
 
     #[cfg(target_os = "linux")]
     {
-        crate::linux_layout::attach_service(&window, &webview, position, size)?;
+        crate::linux_layout::attach_service(&window, &webview, position, size, service.ignore_tls_errors)?;
     }
 
     if visible {
