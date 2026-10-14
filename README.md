@@ -58,11 +58,11 @@ Download from the [Latest Release (v0.2.7)](https://github.com/BZcreativ/bzdium/
   ```bash
   chmod +x bzdium_0.2.7_amd64.AppImage && ./bzdium_0.2.7_amd64.AppImage
   ```
-- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst) (4.1 MB, still the v0.2.5 build — the security fixes are in the bundles above):
+- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst) (4.2 MB):
   ```bash
-  sudo pacman -U bzdium-bin-0.2.5-1-x86_64.pkg.tar.zst
+  sudo pacman -U bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.5-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-0.2.5-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.5/bzdium-0.2.5-linux-x64.tgz) (4.3 MB, also the v0.2.5 build):
+- **Portable Tarball** — [`bzdium-0.2.7-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-0.2.7-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-0.2.7-linux-x64.tgz) (4.5 MB):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
