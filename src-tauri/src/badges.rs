@@ -5,12 +5,20 @@ use crate::state::SharedState;
 /// JavaScript injected into every service webview. Polls `document.title`
 /// every 3 s and reports it to Rust so badges can be derived.
 ///
+/// Top frame only: WebView2 runs initialization scripts in ALL frames
+/// (AddScriptToExecuteOnDocumentCreated). Inside iframes (OAuth, reCAPTCHA,
+/// about:srcdoc) the invoke would carry an opaque `Origin: null` header that
+/// the Tauri IPC endpoint rejects with HTTP 500, and the `window.__TAURI__`
+/// global would leak into third-party frames — extra embedded-browser
+/// fingerprint surface.
+///
 /// Local invariant: service ids are UUIDs by construction (add_service,
 /// import) — assert it here so this stays true even if callers change.
 pub fn init_script(service_id: &str) -> String {
     debug_assert!(uuid::Uuid::parse_str(service_id).is_ok(), "service id must be a UUID");
     format!(
         r#"(function () {{
+  if (window.top !== window.self) {{ return; }}
   var last = null;
   function report() {{
     try {{
@@ -163,6 +171,12 @@ mod tests {
         assert_eq!(parse_badge_count("(1000) X"), 999);
         assert_eq!(parse_badge_count("(999) X"), 999);
         assert_eq!(parse_badge_count("(998) X"), 998);
+    }
+
+    #[test]
+    fn init_script_runs_in_top_frame_only() {
+        let script = init_script("00000000-0000-4000-8000-00000000abc1");
+        assert!(script.contains("window.top !== window.self"));
     }
 
     #[test]

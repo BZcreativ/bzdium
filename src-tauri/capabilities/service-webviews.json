@@ -6,7 +6,7 @@
   "webviews": ["service-*"],
   "local": false,
   "remote": {
-    "urls": ["https://*"]
+    "urls": ["https://*", "https://*:*"]
   },
   "permissions": ["allow-report-title"]
 }

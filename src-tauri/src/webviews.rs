@@ -278,6 +278,22 @@ pub fn create_service_webview(
             tauri::webview::NewWindowResponse::Deny
         })
         .focused(visible);
+
+    // Windows equivalent of Linux's TlsErrorsPolicy::Ignore (linux_layout.rs).
+    // wry REPLACES its default WebView2 args when additional_browser_args is
+    // set, so its defaults are repeated here. Scope is safe: WebView2 runs one
+    // browser process per data directory, every service already gets its own
+    // session dir, and link windows share a different profile — the switch
+    // can only relax TLS for services that explicitly opted in.
+    #[cfg(windows)]
+    let builder = if service.ignore_tls_errors {
+        builder.additional_browser_args(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
+             --ignore-certificate-errors",
+        )
+    } else {
+        builder
+    };
     let webview = window
         .add_child(builder, position, size)
         .map_err(webview_error)?;

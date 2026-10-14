@@ -63,3 +63,23 @@ fn https_wildcard_matches_all_service_hosts() {
 fn https_wildcard_rejects_non_https() {
     assert!(!matches("https://*", "http://web.whatsapp.com/"));
 }
+
+/// `"https://*"` only matches the default https port: an explicit
+/// non-default port (homelab/self-hosted services — exactly the users of
+/// the ignore-TLS feature) fails the match, which suppresses injection of
+/// the `__TAURI__` bridge and silently disables badge reporting.
+/// The capability therefore carries a second pattern `"https://*:*"`
+/// (any port). This test pins both halves of that contract.
+#[test]
+fn non_default_ports_require_explicit_port_wildcard() {
+    // the trap: pattern WITHOUT port wildcard misses :8443-style services
+    assert!(!matches("https://*", "https://localhost:8443/"));
+    assert!(matches("https://*", "https://localhost:443/"));
+
+    // the fix, mirroring capabilities/service-webviews.json
+    assert!(matches("https://*:*", "https://localhost:8443/"));
+    assert!(matches("https://*:*", "https://example.com:9443/app"));
+    assert!(matches("https://*:*", "https://web.whatsapp.com/"));
+    assert!(!matches("https://*:*", "http://localhost:8443/"));
+    assert!(!matches("https://*:*", "http://web.whatsapp.com/"));
+}
