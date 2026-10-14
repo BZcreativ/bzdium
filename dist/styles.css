@@ -53,6 +53,7 @@ body {
   left: 0;
   top: 0;
   bottom: 0;
+  height: 100%;
   width: 72px;
   background: var(--bg);
   border-right: 1px solid var(--border);
@@ -85,6 +86,7 @@ body {
 
 #service-list {
   flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
@@ -312,6 +314,7 @@ body.light .svc-icon-brand {
 }
 
 .sidebar-bottom {
+  margin-top: auto;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
