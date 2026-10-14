@@ -28,7 +28,20 @@ pub fn resolve_data_dir() -> PathBuf {
         .and_then(|exe| exe.parent().map(|p| p.join(PORTABLE_DIR_NAME)));
     let fallback = std::env::var("APPDATA")
         .ok()
-        .map(|appdata| PathBuf::from(appdata).join(FALLBACK_DIR_NAME));
+        .map(|appdata| PathBuf::from(appdata).join(FALLBACK_DIR_NAME))
+        .or_else(|| {
+            std::env::var("XDG_DATA_HOME")
+                .ok()
+                .map(|xdg| PathBuf::from(xdg).join(FALLBACK_DIR_NAME))
+                .or_else(|| {
+                    std::env::var("HOME").ok().map(|home| {
+                        PathBuf::from(home)
+                            .join(".local")
+                            .join("share")
+                            .join(FALLBACK_DIR_NAME)
+                    })
+                })
+        });
     choose_data_dir(portable.as_deref(), fallback.as_deref(), dir_is_writable)
 }
 

@@ -95,7 +95,16 @@ fn open_in_default_browser(url: &str) -> Result<(), String> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn open_in_default_browser(url: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("failed to run xdg-open: {e}"))
+}
+
+#[cfg(all(not(windows), not(target_os = "linux")))]
 fn open_in_default_browser(url: &str) -> Result<(), String> {
     let _ = url;
     Err("external links unsupported on this platform".to_string())
