@@ -112,6 +112,15 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
+- **v0.2.9** (Agent Access Layer):
+  - **New: an opt-in Agent Access API.** The app's existing command surface is now exposed to local AI agents over two transports — MCP (JSON-RPC 2.0) and REST — both projected from a single tool registry, so a REST call, an MCP `tools/call` and a UI click all reach the same Rust function. Off by default; enable it explicitly in Settings.
+  - 21 tools, 7 resources and 5 prompts, with an OpenAPI 3.1 document at `/api/v1/agent/openapi.json` for function-calling clients.
+  - Loopback-only listener that rejects any request carrying an `Origin` header and never answers CORS preflight, so a web page cannot drive the app through your browser.
+  - Scoped bearer keys (read / write / admin) with a per-token rate limit. Tokens and the admin ceiling are re-read on every request, so revoking a key or un-ticking "Allow admin tools" takes effect immediately, without a restart.
+  - Mutating tools accept `dryRun: true` to preview an effect without committing it. Destructive operations are admin-only, and `import_config` additionally requires a confirmation token issued by `export_config`.
+  - Errors are structured and always carry an actionable `suggestion`.
+  - MCP works over Streamable HTTP and over a `--mcp-stdio` bridge for desktop clients such as Claude Desktop and Cursor.
+  - Verified end-to-end against the official MCP TypeScript SDK on both transports: handshake, `tools/list`, `tools/call`, `resources/read`, `prompts/get`, and read/write/admin scope enforcement.
 - **v0.2.8** (recovery fix):
   - **Reload is now a hard reload.** A service webview can wedge its WebView2 network stack: the page keeps painting but every request hangs, so the page drops into its own offline state — seen with Gmail (`Not connected.` banner, dimmed list with no sender/subject, messages never open, console repeating `Exceeded max retries while waiting for Gbar to load.`). A soft `location.reload()` never completed in that state. Reload now closes the webview, waits for the old browser process to exit, and recreates it, which is the only thing that clears the wedge.
   - Reloading an inactive service no longer creates its webview visible on top of the active one.
