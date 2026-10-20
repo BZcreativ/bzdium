@@ -11,6 +11,9 @@
   /* ------------------------------------------------------------------ *
    * Plain-browser fallback (layout sanity check only, no backend).      *
    * ------------------------------------------------------------------ */
+  // Browser-preview-only state for the Agent Access panel, so the admin
+  // controls behave in a plain browser the way they do in the app.
+  var mockAdminScope = false;
   var mockState = {
     services: [
       { id: "demo-1", name: "WhatsApp", url: "https://web.whatsapp.com", icon: "W", enabled: true, order: 0, hibernated: false, badgeCount: 3 },
@@ -18,7 +21,7 @@
       { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 }
     ],
     activeServiceId: "demo-1",
-    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, linkTarget: "browser" },
+    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, linkTarget: "browser", agentAccess: false },
     totalBadgeCount: 15,
     dataDir: "demo"
   };
@@ -36,6 +39,26 @@
     if (name === "get_state") return Promise.resolve(mockState);
     if (name === "export_config") return Promise.resolve(null);
     if (name === "import_config") return Promise.resolve(null);
+    // Agent Access, so the panel is inspectable in a plain browser too.
+    if (name === "get_agent_status") return Promise.resolve({
+      enabled: !!(mockState.settings && mockState.settings.agentAccess),
+      running: false,
+      port: null,
+      allowAdminScope: !!mockAdminScope,
+      tokenCount: 0,
+      baseUrl: null
+    });
+    if (name === "mint_agent_token") return Promise.resolve("bzd_agt_demo_preview_only");
+    if (name === "revoke_agent_tokens") return Promise.resolve(0);
+    if (name === "set_agent_admin_scope") {
+      // Remember the toggle so a later get_agent_status agrees with it; the
+      // panel re-reads status after every change.
+      mockAdminScope = !!args.allow;
+      return Promise.resolve({
+        enabled: true, running: false, port: null,
+        allowAdminScope: mockAdminScope, tokenCount: 0, baseUrl: null
+      });
+    }
     // Mutate the demo state a little so interactions are visible in a browser.
     if (name === "set_active_service") mockState.activeServiceId = args.id;
     if (name === "hibernate_service" || name === "wake_service") {
@@ -656,10 +679,143 @@
     $("set-dark").checked = s.darkUi !== false;
     $("set-devmode").checked = !!s.devMode;
     $("set-link-bzdium").checked = s.linkTarget === "bzdium";
+    $("set-agent-access").checked = !!s.agentAccess;
     $("settings-error").classList.add("hidden");
+    $("agent-error").classList.add("hidden");
+    $("agent-token-note").classList.add("hidden");
+    // The token value is never put into app state; clear whatever the last
+    // session showed so a stale key cannot linger in the DOM.
+    agentTokenShown = null;
+    renderAgentToken();
+    refreshAgentPanel();
     refreshSettingsFooter();
     openModal("settings-modal");
   }
+
+  /* ----- Agent Access panel -----
+   * The token is deliberately NOT part of currentState: it must never be
+   * mirrored into the snapshot the whole UI sees. We hold it in this one
+   * variable, show it once, and forget it on the next modal open. */
+
+  var agentTokenShown = null;
+  var agentStatus = null;
+
+  function renderAgentToken() {
+    var el = $("agent-token");
+    if (agentTokenShown) {
+      el.textContent = agentTokenShown;
+      $("agent-copy-btn").classList.remove("hidden");
+    } else if (agentStatus && agentStatus.tokenCount > 0) {
+      el.textContent = agentStatus.tokenCount + " key(s) configured — hidden";
+      $("agent-copy-btn").classList.add("hidden");
+    } else {
+      el.textContent = "Not created yet";
+      $("agent-copy-btn").classList.add("hidden");
+    }
+  }
+
+  function refreshAgentPanel() {
+    var on = $("set-agent-access").checked;
+    $("agent-panel").classList.toggle("hidden", !on);
+    if (!on) return;
+    if (!hasTauri) return;
+    cmd("get_agent_status").then(function (st) {
+      agentStatus = st;
+      $("set-agent-admin").checked = !!st.allowAdminScope;
+      $("agent-endpoint").textContent = st.baseUrl || "Starting…";
+      // The admin-key button only makes sense while the ceiling is open: the
+      // backend refuses to mint an admin token otherwise, so offering the
+      // button would just produce an error the user cannot act on.
+      $("agent-admin-token-btn").classList.toggle("hidden", !st.allowAdminScope);
+      renderAgentToken();
+    }).catch(function () {});
+  }
+
+  $("set-agent-access").addEventListener("change", refreshAgentPanel);
+
+  $("agent-copy-btn").addEventListener("click", function () {
+    if (!agentTokenShown) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(agentTokenShown).then(function () {
+        toast("API key copied");
+      }).catch(function () { toast("Could not copy; select the key manually."); });
+    }
+  });
+
+  $("agent-new-token-btn").addEventListener("click", function () {
+    var scope = "write";
+    cmd("mint_agent_token", { scope: scope, label: "Created from Settings" })
+      .then(function (token) {
+        agentTokenShown = token;
+        $("agent-token-note").classList.remove("hidden");
+        renderAgentToken();
+        refreshAgentPanel();
+      })
+      .catch(function (e) {
+        $("agent-error").textContent = String(e);
+        $("agent-error").classList.remove("hidden");
+      });
+  });
+
+  $("agent-admin-token-btn").addEventListener("click", function () {
+    // Admin keys can delete services and replace the whole configuration, so
+    // ask first and say plainly what is being handed over.
+    openConfirm(
+      "Create an ADMIN key? It can delete services (destroying saved logins) and replace your entire configuration.",
+      function () {
+        cmd("mint_agent_token", { scope: "admin", label: "Admin key from Settings" })
+          .then(function (token) {
+            agentTokenShown = token;
+            $("agent-token-note").classList.remove("hidden");
+            renderAgentToken();
+            refreshAgentPanel();
+          })
+          .catch(function (e) {
+            $("agent-error").textContent = String(e);
+            $("agent-error").classList.remove("hidden");
+          });
+      }
+    );
+  });
+
+  $("agent-revoke-btn").addEventListener("click", function () {
+    openConfirm("Revoke ALL API keys? Any agent using them stops working immediately.", function () {
+      cmd("revoke_agent_tokens").then(function (n) {
+        agentTokenShown = null;
+        toast("Revoked " + n + " key(s).");
+        refreshAgentPanel();
+      }).catch(function () {});
+    });
+  });
+
+  $("set-agent-admin").addEventListener("change", function () {
+    var allow = $("set-agent-admin").checked;
+    if (allow) {
+      // Granting unlocks irreversible tools, so confirm first. openConfirm
+      // exposes no cancel callback, so attach a one-shot listener that reverts
+      // the checkbox if the user backs out.
+      var cancel = $("confirm-cancel");
+      var revert = function () {
+        cancel.removeEventListener("click", revert);
+        refreshAgentPanel();
+      };
+      cancel.addEventListener("click", revert);
+      openConfirm(
+        "Allow admin-scope tools? An admin key can DELETE services and saved logins, and REPLACE your whole configuration.",
+        function () {
+          cancel.removeEventListener("click", revert);
+          cmd("set_agent_admin_scope", { allow: true })
+            .then(refreshAgentPanel)
+            .catch(function () { refreshAgentPanel(); });
+        }
+      );
+    } else {
+      // Revoking admin never needs confirmation: it strictly reduces power.
+      cmd("set_agent_admin_scope", { allow: false })
+        .then(refreshAgentPanel)
+        .catch(function () {});
+    }
+  });
 
   /* Troubleshooting footer: version + resolved data dir; DevTools button
    * only while developer mode is on. */
@@ -701,7 +857,8 @@
         showUrlBar: $("set-urlbar").checked,
         darkUi: $("set-dark").checked,
         devMode: $("set-devmode").checked,
-        linkTarget: $("set-link-bzdium").checked ? "bzdium" : "browser"
+        linkTarget: $("set-link-bzdium").checked ? "bzdium" : "browser",
+        agentAccess: $("set-agent-access").checked
       }
     }).then(function () { closeModal("settings-modal"); })
       .catch(function () {});

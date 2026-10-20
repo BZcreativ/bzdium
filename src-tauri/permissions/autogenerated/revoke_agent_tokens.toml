@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-revoke-agent-tokens"
+description = "Enables the revoke_agent_tokens command without any pre-configured scope."
+commands.allow = ["revoke_agent_tokens"]
+
+[[permission]]
+identifier = "deny-revoke-agent-tokens"
+description = "Denies the revoke_agent_tokens command without any pre-configured scope."
+commands.deny = ["revoke_agent_tokens"]

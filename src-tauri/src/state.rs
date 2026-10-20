@@ -70,6 +70,12 @@ pub struct Settings {
     /// files predate this field; default to the OS browser.
     #[serde(default)]
     pub link_target: LinkTarget,
+    /// Opt-in Agent Access API (local MCP + REST surface). OFF by default:
+    /// nothing binds a socket until a human ticks this in Settings. Older
+    /// settings.json files predate this field, so it must default to false —
+    /// an unknown field must never silently enable a network listener.
+    #[serde(default)]
+    pub agent_access: bool,
 }
 
 impl Default for Settings {
@@ -82,6 +88,7 @@ impl Default for Settings {
             show_url_bar: true,
             dev_mode: false,
             link_target: LinkTarget::Browser,
+            agent_access: false,
         }
     }
 }

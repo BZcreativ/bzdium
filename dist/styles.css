@@ -639,3 +639,65 @@ button:focus-visible,
   outline-offset: 2px;
   border-radius: 10px;
 }
+/* ----- Agent Access panel (Settings) ----- */
+.agent-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+  background: var(--panel, rgba(255, 255, 255, 0.02));
+}
+
+.agent-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+}
+
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.agent-label {
+  color: var(--text-dim);
+  flex: 0 0 70px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.agent-row code {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 4px 6px;
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* A credential must be visually selectable and must not wrap mid-token. */
+.agent-token { user-select: all; }
+
+.agent-mini {
+  flex: 0 0 auto;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+}
+
+.agent-actions { margin-top: 10px; }
+
+.agent-note {
+  font-size: 11px;
+  color: var(--warn, #e0a030);
+  margin: 6px 0 0;
+  line-height: 1.4;
+}

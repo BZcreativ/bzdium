@@ -711,36 +711,140 @@ fn chrono_like_now() -> String {
     format!("{}", d.as_secs())
 }
 
+// ---------------------------------------------------------------------------
+// Path-based config core (shared by the native dialogs and the agent layer)
+// ---------------------------------------------------------------------------
+
+/// How long an export confirmation token stays valid.
+pub const IMPORT_CONFIRM_WINDOW_SECS: u64 = 600;
+
+/// Set by `export_config_to_path`, consumed by `import_config_from_path`.
+/// A token proves a caller obtained a real export from this process before it
+/// may REPLACE the whole configuration — the agent layer uses this instead of
+/// a native dialog the user would have to click.
+static EXPORT_CONFIRM_TOKEN: std::sync::OnceLock<std::sync::Mutex<Option<(String, std::time::Instant)>>> =
+    std::sync::OnceLock::new();
+
+fn confirm_slot() -> &'static std::sync::Mutex<Option<(String, std::time::Instant)>> {
+    EXPORT_CONFIRM_TOKEN.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn mint_confirm_token() -> String {
+    let token = Uuid::new_v4().to_string();
+    if let Ok(mut slot) = confirm_slot().lock() {
+        *slot = Some((token.clone(), std::time::Instant::now()));
+    }
+    token
+}
+
+/// True when `presented` matches the last minted token and has not expired.
+/// A single token may be redeemed repeatedly inside its window, so a retried
+/// import is not punished for a network hiccup.
+fn confirm_token_is_valid(presented: &str) -> bool {
+    let Ok(slot) = confirm_slot().lock() else {
+        return false;
+    };
+    let Some((token, minted)) = slot.as_ref() else {
+        return false;
+    };
+    if minted.elapsed().as_secs() > IMPORT_CONFIRM_WINDOW_SECS {
+        return false;
+    }
+    token == presented
+}
+
+/// The token minted by the most recent in-window export, if any. Returns
+/// `None` once the ten-minute window has elapsed or nothing was exported.
+/// Tools that call `export_config_to_path` get the token as its return value;
+/// this accessor exists for callers that did not see that return value.
+/// Currently only exercised by tests, hence the allow.
+#[allow(dead_code)]
+pub fn last_export_token() -> Option<String> {
+    let slot = confirm_slot().lock().ok()?;
+    let (token, minted) = slot.as_ref()?;
+    if minted.elapsed().as_secs() > IMPORT_CONFIRM_WINDOW_SECS {
+        return None;
+    }
+    Some(token.clone())
+}
+
+/// Builds the export document from live state. Pure read: no side effects.
+fn build_config_file(state: &State<'_, SharedState>) -> Result<ConfigFile, String> {
+    let inner = state.lock().map_err(|e| e.to_string())?;
+    let mut services: Vec<ConfigService> = inner
+        .services
+        .iter()
+        .map(|s| ConfigService {
+            id: s.id.clone(),
+            name: s.name.clone(),
+            url: s.url.clone(),
+            icon: s.icon.clone(),
+            enabled: s.enabled,
+            order: s.order,
+            icon_id: s.icon_id.clone(),
+            ignore_tls_errors: s.ignore_tls_errors,
+        })
+        .collect();
+    services.sort_by_key(|s| s.order);
+    Ok(ConfigFile {
+        kind: CONFIG_TYPE.to_string(),
+        version: CONFIG_VERSION,
+        exported_at: chrono_like_now(),
+        settings: inner.settings.clone(),
+        services,
+    })
+}
+
+/// Writes settings + services to `path` as JSON and returns the confirmation
+/// token that `import_config_from_path` will accept for the next ten minutes.
+/// The token is returned (not just stored) because an agent caller has no
+/// native dialog to confirm through and must present it on the way back in.
+/// Session folders (WebView2 profiles) are deliberately not part of the export.
+pub fn export_config_to_path(
+    _app: &AppHandle,
+    state: State<'_, SharedState>,
+    path: &std::path::Path,
+) -> Result<String, String> {
+    let config = build_config_file(&state)?;
+    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    crate::storage::atomic_write(path, &json)
+        .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+    Ok(mint_confirm_token())
+}
+
+/// Reads and validates a config file from `path`, returning the parsed
+/// document. Every rejection message is unchanged from the dialog path.
+fn read_config_file(path: &std::path::Path) -> Result<ConfigFile, String> {
+    // Refuse to slurp an unbounded file: a config is a few KiB, anything
+    // larger is either corruption or something that isn't a config at all.
+    const MAX_CONFIG_BYTES: u64 = 2 * 1024 * 1024;
+    let size = std::fs::metadata(path)
+        .map_err(|e| format!("cannot stat {}: {e}", path.display()))?
+        .len();
+    if size > MAX_CONFIG_BYTES {
+        return Err(format!(
+            "config file is too large ({} bytes, max {})",
+            size, MAX_CONFIG_BYTES
+        ));
+    }
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let config: ConfigFile =
+        serde_json::from_str(&text).map_err(|e| format!("not a bzdium config file: {e}"))?;
+    if config.kind != CONFIG_TYPE || config.version != CONFIG_VERSION {
+        return Err(format!(
+            "unsupported config file (type {}/{})",
+            config.kind, config.version
+        ));
+    }
+    Ok(config)
+}
+
 /// Exports settings + services to a JSON file chosen in a native save
 /// dialog. `Ok(None)` means the user cancelled. Session folders (WebView2
 /// profiles) are deliberately not part of the export.
 #[tauri::command]
 pub async fn export_config(app: AppHandle, state: State<'_, SharedState>) -> Result<Option<String>, String> {
-    let config = {
-        let inner = state.lock().map_err(|e| e.to_string())?;
-        let mut services: Vec<ConfigService> = inner
-            .services
-            .iter()
-            .map(|s| ConfigService {
-                id: s.id.clone(),
-                name: s.name.clone(),
-                url: s.url.clone(),
-                icon: s.icon.clone(),
-                enabled: s.enabled,
-                order: s.order,
-                icon_id: s.icon_id.clone(),
-                ignore_tls_errors: s.ignore_tls_errors,
-            })
-            .collect();
-        services.sort_by_key(|s| s.order);
-        ConfigFile {
-            kind: CONFIG_TYPE.to_string(),
-            version: CONFIG_VERSION,
-            exported_at: chrono_like_now(),
-            settings: inner.settings.clone(),
-            services,
-        }
-    };
     let file = app
         .dialog()
         .file()
@@ -751,45 +855,33 @@ pub async fn export_config(app: AppHandle, state: State<'_, SharedState>) -> Res
         return Ok(None);
     };
     let path = file.into_path().map_err(|e| format!("invalid save path: {e}"))?;
-    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    crate::storage::atomic_write(&path, &json)
-        .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+    // The save dialog itself is the human confirmation; the minted token is
+    // only needed by callers that have no dialog (the agent layer).
+    let _token = export_config_to_path(&app, state.clone(), &path)?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Imports a config file, REPLACING all current services and settings.
-/// Service ids are preserved so existing local sessions reconnect.
-/// `Ok(None)` means the user cancelled the file picker.
-#[tauri::command]
-pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Result<Option<ImportOutcome>, String> {
-    let file = app
-        .dialog()
-        .file()
-        .add_filter("bzdium config", &["json"])
-        .blocking_pick_file();
-    let Some(file) = file else {
-        return Ok(None);
-    };
-    let path = file.into_path().map_err(|e| format!("invalid file: {e}"))?;
-    // Refuse to slurp an unbounded file: a config is a few KiB, anything
-    // larger is either corruption or something that isn't a config at all.
-    const MAX_CONFIG_BYTES: u64 = 2 * 1024 * 1024;
-    let size = std::fs::metadata(&path).map_err(|e| format!("cannot stat {}: {e}", path.display()))?.len();
-    if size > MAX_CONFIG_BYTES {
-        return Err(format!(
-            "config file is too large ({} bytes, max {})",
-            size, MAX_CONFIG_BYTES
-        ));
+/// Imports a config file from `path`, REPLACING all current services and
+/// settings. Service ids are preserved so existing local sessions reconnect.
+///
+/// `confirm_token` is the token minted by `export_config_to_path`. The native
+/// dialog passes `None` (the user just confirmed through the OS dialog); the
+/// agent layer passes the token because it has no native dialog to click.
+pub fn import_config_from_path(
+    app: &AppHandle,
+    state: State<'_, SharedState>,
+    path: &std::path::Path,
+    confirm_token: Option<&str>,
+) -> Result<ImportOutcome, String> {
+    if let Some(token) = confirm_token {
+        if !confirm_token_is_valid(token) {
+            return Err(
+                "confirmation token is missing or expired: call export_config first, then retry the import within 10 minutes"
+                    .to_string(),
+            );
+        }
     }
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let config: ConfigFile =
-        serde_json::from_str(&text).map_err(|e| format!("not a bzdium config file: {e}"))?;
-    if config.kind != CONFIG_TYPE || config.version != CONFIG_VERSION {
-        return Err(format!(
-            "unsupported config file (type {}/{})",
-            config.kind, config.version
-        ));
-    }
+    let config = read_config_file(path)?;
 
     let mut skipped = Vec::new();
     let mut services = Vec::new();
@@ -870,8 +962,25 @@ pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Res
         }
     }
     let snapshot = state.lock().map_err(|e| e.to_string())?.snapshot();
-    emit_snapshot(&app, &snapshot);
-    Ok(Some(ImportOutcome { state: snapshot, skipped }))
+    emit_snapshot(app, &snapshot);
+    Ok(ImportOutcome { state: snapshot, skipped })
+}
+
+/// Imports a config file chosen from a native picker, REPLACING all current
+/// services and settings. `Ok(None)` means the user cancelled the file picker.
+#[tauri::command]
+pub async fn import_config(app: AppHandle, state: State<'_, SharedState>) -> Result<Option<ImportOutcome>, String> {
+    let file = app
+        .dialog()
+        .file()
+        .add_filter("bzdium config", &["json"])
+        .blocking_pick_file();
+    let Some(file) = file else {
+        return Ok(None);
+    };
+    let path = file.into_path().map_err(|e| format!("invalid file: {e}"))?;
+    // The native picker IS the human confirmation, so no token is required.
+    import_config_from_path(&app, state.clone(), &path, None).map(Some)
 }
 
 /// Deletes session dirs and icon files whose service id is not in `keep`.
@@ -1171,5 +1280,53 @@ mod tests {
         // must also be refused.
         assert!(!tls_bypass_allowed_for_url("https://www.dropbox.com"));
         assert!(!tls_bypass_allowed_for_url("https://dropbox.com"));
+    }
+
+    #[test]
+    fn export_confirm_token_is_minted_and_validated() {
+        // One test owns the global token slot, so parallel tests cannot race.
+        let token = mint_confirm_token();
+        assert_eq!(token.len(), 36, "token must be a uuid");
+        assert!(Uuid::parse_str(&token).is_ok());
+        assert!(confirm_token_is_valid(&token), "a freshly minted token must be valid");
+        assert_eq!(last_export_token().as_deref(), Some(token.as_str()));
+
+        // Anything that is not the minted token is refused.
+        assert!(!confirm_token_is_valid(""));
+        assert!(!confirm_token_is_valid("not-a-token"));
+        assert!(!confirm_token_is_valid(&token[..35]));
+
+        // A second export supersedes the first: stale exports must not be
+        // able to authorise an import after a newer one was offered.
+        let newer = mint_confirm_token();
+        assert!(confirm_token_is_valid(&newer));
+        assert!(!confirm_token_is_valid(&token));
+        assert_eq!(last_export_token().as_deref(), Some(newer.as_str()));
+    }
+
+    #[test]
+    fn confirm_window_is_ten_minutes() {
+        // The UI/agent contract is "call export, then import within 10 min".
+        assert_eq!(IMPORT_CONFIRM_WINDOW_SECS, 600);
+    }
+
+    #[test]
+    fn agent_access_is_off_by_default_and_absent_fields_stay_off() {
+        // Agent Access binds a loopback socket, so it MUST default to false
+        // for both a fresh Settings and any settings.json written before the
+        // field existed.
+        assert!(!Settings::default().agent_access);
+        let old = r#"{"hibernationMinutes":30,"minimizeToTray":true,"startWithWindows":false,"darkUi":true,"showUrlBar":true,"devMode":false,"linkTarget":"browser"}"#;
+        let s: Settings = serde_json::from_str(old).unwrap();
+        assert!(!s.agent_access, "an older settings.json must not enable the agent layer");
+
+        // It round-trips through the IPC contract as camelCase.
+        let mut on = Settings::default();
+        on.agent_access = true;
+        let json = serde_json::to_string(&on).unwrap();
+        assert!(json.contains("\"agentAccess\":true"), "{json}");
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert!(back.agent_access);
+        assert_eq!(back, on);
     }
 }

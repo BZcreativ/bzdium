@@ -9,6 +9,17 @@ rust-version = "1.77"
 name = "bzdium_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# The binary is a thin dispatcher (app startup / --mcp-stdio) with no code of
+# its own to unit test, so it opts out of the automatically generated test
+# harness. This also keeps the manifest embedded by tauri-build and the one
+# build.rs adds for test binaries from both trying to attach to the same
+# executable, which link.exe rejects with LNK1123. All testable logic lives in
+# the library and is covered there.
+[[bin]]
+name = "bzdium"
+path = "src/main.rs"
+test = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -21,6 +32,26 @@ serde_json = "1"
 base64 = "0.22"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
+
+# --- Agent Access Layer (MCP + REST/OpenAPI) --------------------------------
+# Every crate below is ALREADY resolved in Cargo.lock as a transitive
+# dependency of tauri/wry, so declaring them direct adds no new download and
+# no new supply-chain surface. Deliberately NOT using axum or rmcp: the repo's
+# identity is a 4-12 MB binary with a minimal dependency tree, and both
+# protocol surfaces are small enough to implement directly against the specs.
+hyper = { version = "1", features = ["http1", "server", "client"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "service"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "sync",
+    "time",
+    "io-util",
+    "io-std",
+    "macros",
+] }
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 webkit2gtk = "2.0"

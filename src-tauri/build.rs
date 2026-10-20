@@ -6,8 +6,36 @@
 //!    `report_title` — Tauri v2 denies every custom command from a non-local
 //!    origin unless a capability with a `remote` context grants it.
 fn main() {
+    // The dialog plugin's Windows backend calls comctl32!TaskDialogIndirect, an
+    // entry point that exists only in the Common Controls v6 side-by-side
+    // assembly. A process must declare the v6 dependency in its application
+    // manifest or the loader refuses to start it at all, failing with
+    // STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) before main() -- which looks
+    // exactly like a corrupt build.
+    //
+    // tauri-build embeds such a manifest, but only into the application binary.
+    // Test harnesses are separate executables that link the same crate and so
+    // import the same symbol, and they would get only the manifest link.exe
+    // synthesises, which does not name v6. So: stop tauri-build from embedding
+    // its copy, and embed one manifest ourselves into every linked executable.
+    // Doing it in one place means the app binary and the test harnesses cannot
+    // disagree, and there is never more than one manifest resource per image
+    // (two make link.exe fail with LNK1123).
+    let windows_attributes = if cfg!(windows) {
+        let manifest = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("windows-app.manifest");
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        tauri_build::WindowsAttributes::new_without_app_manifest()
+    } else {
+        tauri_build::WindowsAttributes::new()
+    };
+
     tauri_build::try_build(
-        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
+        tauri_build::Attributes::new()
+            .windows_attributes(windows_attributes)
+            .app_manifest(tauri_build::AppManifest::new().commands(&[
             "get_state",
             "update_settings",
             "get_recipes",
@@ -30,6 +58,10 @@ fn main() {
             "reset_service_icon",
             "get_service_icon",
             "report_title",
+            "get_agent_status",
+            "set_agent_admin_scope",
+            "mint_agent_token",
+            "revoke_agent_tokens",
         ])),
     )
     .expect("failed to run tauri-build");

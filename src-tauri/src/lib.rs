@@ -1,3 +1,4 @@
+pub mod agent;
 mod autostart;
 mod badges;
 mod hibernate;
@@ -56,12 +57,100 @@ fn update_settings(
     inner.settings = settings;
     inner.save_settings()?;
     autostart::apply(inner.settings.start_with_windows)?;
+    let agent_access = inner.settings.agent_access;
+    let data_dir = inner.data_dir.clone();
     let snapshot = inner.snapshot();
     drop(inner);
     // The URL-bar toggle changes service webview geometry — re-apply it.
     webviews::sync_bounds(&app);
     emit_snapshot(&app, &snapshot);
+
+    // Mirror the checkbox into the layer's own config and mint a first token
+    // when the layer is switched on without one. Without this the checkbox
+    // would write settings.json while startup reads agent/config.json, and the
+    // listener would never bind.
+    let current_admin = agent::load_config(&data_dir).allow_admin_scope;
+    if let Err(e) = agent::wire::sync_from_settings(&data_dir, agent_access, current_admin) {
+        eprintln!("agent: cannot persist agent config: {e}");
+    }
+    if agent_access {
+        match agent::wire::ensure_first_token(&data_dir, current_admin) {
+            Ok(Some(token)) => {
+                // Shown once in the UI; never logged, never retrievable again.
+                use tauri::Emitter as _;
+                app.emit("agent-token-created", token).ok();
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!("agent: cannot mint the first token: {e}"),
+        }
+    }
+    agent::startup::apply_enabled(&app, agent_access);
+
     Ok(snapshot)
+}
+
+// ---------------------------------------------------------------------------
+// Agent Access commands
+//
+// These are the only commands that touch the layer's own credential store.
+// They are deliberately separate from update_settings: minting a credential and
+// granting admin scope are privilege operations, not preferences, and the UI
+// asks for them explicitly.
+// ---------------------------------------------------------------------------
+
+/// Current layer state for the Settings panel. Never contains a token value.
+#[tauri::command]
+fn get_agent_status(state: State<'_, SharedState>) -> Result<agent::wire::AgentStatus, String> {
+    let inner = state.lock().map_err(|e| e.to_string())?;
+    Ok(agent::wire::status(&inner.data_dir))
+}
+
+/// Grants or revokes the admin ceiling. Admin scope unlocks the three
+/// irreversible tools, so this is a distinct, explicit switch.
+#[tauri::command]
+fn set_agent_admin_scope(
+    state: State<'_, SharedState>,
+    allow: bool,
+) -> Result<agent::wire::AgentStatus, String> {
+    let (data_dir, agent_access) = {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        (inner.data_dir.clone(), inner.settings.agent_access)
+    };
+    agent::wire::sync_from_settings(&data_dir, agent_access, allow)?;
+    Ok(agent::wire::status(&data_dir))
+}
+
+/// Mints an extra token and returns it once. The token is persisted before it
+/// is returned, so a crash between the two cannot hand out a token the layer
+/// will later reject.
+#[tauri::command]
+fn mint_agent_token(
+    state: State<'_, SharedState>,
+    scope: String,
+    label: String,
+) -> Result<String, String> {
+    let parsed = agent::scope::Scope::parse(&scope)
+        .ok_or_else(|| format!("unknown scope '{scope}': use read, write or admin"))?;
+    let data_dir = {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        inner.data_dir.clone()
+    };
+    let label = if label.trim().is_empty() {
+        "Created from Settings".to_string()
+    } else {
+        label.trim().to_string()
+    };
+    agent::wire::mint_additional_token(&data_dir, parsed, &label)
+}
+
+/// Deletes every token. The layer stays bound but authenticates nobody.
+#[tauri::command]
+fn revoke_agent_tokens(state: State<'_, SharedState>) -> Result<usize, String> {
+    let data_dir = {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        inner.data_dir.clone()
+    };
+    agent::wire::revoke_all_tokens(&data_dir)
 }
 
 pub fn run() {
@@ -106,11 +195,19 @@ pub fn run() {
             webviews::set_overlay_mode,
             webviews::open_devtools,
             webviews::open_service_external,
+            get_agent_status,
+            set_agent_admin_scope,
+            mint_agent_token,
+            revoke_agent_tokens,
             badges::report_title,
         ])
         .setup(|app| {
             tray::setup_tray(app)?;
             hibernate::start_hibernation_task(app.handle().clone());
+
+            // Agent Access Layer: opt-in, loopback-only. Starts nothing unless
+            // the user enabled it; see agent::startup for the security rules.
+            agent::startup::start_if_enabled(app.handle());
 
             // Keep the registry Run key consistent with the persisted setting.
             let start_with_windows = {

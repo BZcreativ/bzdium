@@ -144,6 +144,43 @@
         <label class="checkbox-label">
           <input id="set-link-bzdium" type="checkbox"> Open links in a bzdium window instead of my browser
         </label>
+        <label class="checkbox-label">
+          <input id="set-agent-access" type="checkbox"> Enable Agent Access API (MCP + REST)
+        </label>
+
+        <!-- Agent Access panel: only meaningful once the layer is on. -->
+        <div id="agent-panel" class="agent-panel hidden">
+          <p class="agent-hint">
+            A loopback-only server lets a local AI agent drive bzdium.
+            Nothing is reachable from the internet.
+          </p>
+          <p class="agent-row">
+            <span class="agent-label">Endpoint</span>
+            <code id="agent-endpoint">—</code>
+          </p>
+          <p class="agent-row">
+            <span class="agent-label">API key</span>
+            <code id="agent-token" class="agent-token">Not created yet</code>
+            <button type="button" id="agent-copy-btn" class="ghost-btn agent-mini">Copy</button>
+          </p>
+          <p class="agent-note hidden" id="agent-token-note">
+            Copy this key now — it is shown only once and cannot be recovered.
+          </p>
+          <div class="config-actions agent-actions">
+            <button type="button" id="agent-new-token-btn" class="ghost-btn">New API key…</button>
+            <button type="button" id="agent-admin-token-btn" class="ghost-btn hidden">New admin key…</button>
+            <button type="button" id="agent-revoke-btn" class="ghost-btn">Revoke all keys</button>
+          </div>
+          <label class="checkbox-label">
+            <input id="set-agent-admin" type="checkbox"> Allow admin tools (delete services, replace all configuration)
+          </label>
+          <p class="agent-hint">
+            New keys are always write-scoped. Admin keys must be requested
+            separately, and only while this box is ticked.
+          </p>
+          <p class="form-error hidden" id="agent-error"></p>
+        </div>
+
         <p class="form-error hidden" id="settings-error"></p>
         <div class="modal-actions">
           <button type="button" class="ghost-btn" data-close>Cancel</button>

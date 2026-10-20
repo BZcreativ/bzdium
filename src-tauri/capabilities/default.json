@@ -26,6 +26,10 @@
     "allow-open-service-external",
     "allow-pick-service-icon",
     "allow-reset-service-icon",
-    "allow-get-service-icon"
+    "allow-get-service-icon",
+    "allow-get-agent-status",
+    "allow-set-agent-admin-scope",
+    "allow-mint-agent-token",
+    "allow-revoke-agent-tokens"
   ]
 }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-agent-admin-scope"
+description = "Enables the set_agent_admin_scope command without any pre-configured scope."
+commands.allow = ["set_agent_admin_scope"]
+
+[[permission]]
+identifier = "deny-set-agent-admin-scope"
+description = "Denies the set_agent_admin_scope command without any pre-configured scope."
+commands.deny = ["set_agent_admin_scope"]

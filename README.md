@@ -36,6 +36,7 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 - **URL bar** with live URL display, visibility toggle, and Home button
 - **External link control** — open in OS default browser (via `xdg-open` / `ShellExecuteW`) or inside an isolated in-app bzdium window
 - **Workspace export / import** — settings + services as a JSON file (service ids preserved, so local sessions reconnect)
+- **Agent Access API (opt-in, off by default)** — a loopback-only MCP + REST/OpenAPI surface over the same commands the UI uses, so a local AI agent can drive bzdium; enable it explicitly in Settings → "Enable Agent Access API"
 - Dark/light UI, system tray + minimize-to-tray, drag-to-reorder, single-instance
 
 ## Install
