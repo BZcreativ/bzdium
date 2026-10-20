@@ -42,27 +42,27 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 ### Linux x64
 
-Download from the [Latest Release (v0.2.7)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.7) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.7)):
+Download from the [Latest Release (v0.2.8)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.8) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.8)):
 
-- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.7_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium_0.2.7_amd64.deb) (5.1 MB):
+- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.8_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.8/bzdium_0.2.8_amd64.deb) (5.1 MB):
   ```bash
-  sudo apt install ./bzdium_0.2.7_amd64.deb
-  # or: sudo dpkg -i bzdium_0.2.7_amd64.deb
+  sudo apt install ./bzdium_0.2.8_amd64.deb
+  # or: sudo dpkg -i bzdium_0.2.8_amd64.deb
   ```
-- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.7-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-0.2.7-1.x86_64.rpm) (5.1 MB):
+- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.8-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.8/bzdium-0.2.8-1.x86_64.rpm) (5.1 MB):
   ```bash
-  sudo dnf install ./bzdium-0.2.7-1.x86_64.rpm
-  # or: sudo rpm -i bzdium-0.2.7-1.x86_64.rpm
+  sudo dnf install ./bzdium-0.2.8-1.x86_64.rpm
+  # or: sudo rpm -i bzdium-0.2.8-1.x86_64.rpm
   ```
-- **Universal AppImage** — [`bzdium_0.2.7_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium_0.2.7_amd64.AppImage) (84 MB):
+- **Universal AppImage** — [`bzdium_0.2.8_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.8/bzdium_0.2.8_amd64.AppImage) (84 MB):
   ```bash
-  chmod +x bzdium_0.2.7_amd64.AppImage && ./bzdium_0.2.7_amd64.AppImage
+  chmod +x bzdium_0.2.8_amd64.AppImage && ./bzdium_0.2.8_amd64.AppImage
   ```
 - **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst) (4.2 MB):
   ```bash
   sudo pacman -U bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.7-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-0.2.7-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-0.2.7-linux-x64.tgz) (4.5 MB):
+- **Portable Tarball** — [`bzdium-0.2.8-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.8/bzdium-0.2.8-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.8/bzdium-0.2.8-linux-x64.tgz) (4.5 MB):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
@@ -71,8 +71,8 @@ Download from the [Latest Release (v0.2.7)](https://github.com/BZcreativ/bzdium/
 
 Download from the [Latest Release](https://github.com/BZcreativ/bzdium/releases/latest):
 
-- **Installer** — [`bzdium_0.2.7_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium_0.2.7_x64-setup.exe) (2.8 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
-- **Portable** — [`bzdium-v0.2.7-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-v0.2.7-x64-portable.exe) (12 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
+- **Installer** — [`bzdium_0.2.8_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.8/bzdium_0.2.8_x64-setup.exe) (2.8 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
+- **Portable** — [`bzdium-v0.2.8-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.8/bzdium-v0.2.8-x64-portable.exe) (12 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
 
 Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can fetch it if missing).
 
@@ -111,6 +111,10 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
+- **v0.2.8** (recovery fix):
+  - **Reload is now a hard reload.** A service webview can wedge its WebView2 network stack: the page keeps painting but every request hangs, so the page drops into its own offline state — seen with Gmail (`Not connected.` banner, dimmed list with no sender/subject, messages never open, console repeating `Exceeded max retries while waiting for Gbar to load.`). A soft `location.reload()` never completed in that state. Reload now closes the webview, waits for the old browser process to exit, and recreates it, which is the only thing that clears the wedge.
+  - Reloading an inactive service no longer creates its webview visible on top of the active one.
+  - Linux bundles rebuilt for this release: `.deb`, `.rpm`, `.AppImage` and the portable tarball.
 - **v0.2.7** (security remediation release):
   - `ignore TLS errors` can no longer be enabled for built-in public services (WhatsApp, Gmail, Discord, …) — only for self-hosted instances on other hosts; existing configs on public hosts are silently downgraded on edit/import. A ⚠ flag on the sidebar marks services with the bypass on.
   - Badge updates from page titles are capped (512-byte titles dropped) and rate-limited to one fan-out per second per service.
