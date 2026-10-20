@@ -158,6 +158,18 @@ WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" ./bzdium.ex
 # then open http://127.0.0.1:9222/json/list
 ```
 
+## Troubleshooting
+
+- **A service page shows its own "offline" state and never recovers.** Seen with
+  Gmail: the message list dims, rows keep only their category chip and date, the
+  header shows "Not connected.", opening a message does nothing, and the console
+  repeats `Exceeded max retries while waiting for Gbar to load.`. The webview's
+  network stack has wedged — every request from that page hangs, so the page
+  cannot even complete a reload of itself. Right-click the service in the sidebar
+  and choose **Reload**: it closes and recreates the webview (a fresh WebView2
+  browser process), which clears the state. On builds whose Reload only called
+  `location.reload()`, use **Hibernate** and then click the service to wake it.
+
 ## Layout
 
 - `src-tauri/src/` — Rust backend (state, storage, services, webviews, hibernation, badges, tray, export/import)

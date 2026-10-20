@@ -601,6 +601,29 @@ pub async fn set_active_service(
     }
 }
 
+/// How long to wait between closing a webview and recreating it on reload.
+/// WebView2 shares one browser process per data directory and keeps it alive for
+/// a moment after the last controller closes. Recreating the webview inside that
+/// window reuses the OLD browser process — and therefore the old (possibly
+/// wedged) network stack. Measured on WebView2 155: hibernate + ~1.5 s + wake
+/// yields a new browser process (new DevTools port, new PID); back-to-back
+/// close + create does not (same browser PID, same port, new renderers only).
+const RELOAD_SETTLE_MS: u64 = 1500;
+
+/// Reloads a service page. This is a **hard** reload: the webview is closed and
+/// recreated, so the page gets a fresh WebView2 browser process and profile
+/// network stack.
+///
+/// Why not `location.reload()`: when a service webview's network stack wedges,
+/// the page keeps rendering its last frame but every request hangs forever. The
+/// page then sits in its own "offline" state — observed with Gmail, which shows
+/// "Not connected.", dims the message list, stops filling in sender/subject and
+/// never opens a message, while the console fills with
+/// "Exceeded max retries while waiting for Gbar to load." A soft reload does not
+/// recover from this because the reload's own document request hangs too; only a
+/// new browser process clears it (verified: hibernate + wake recovers, reload
+/// does not). Consequence: the page comes back at the service's configured URL
+/// rather than the current deep link — same as hibernation wake.
 #[tauri::command]
 pub async fn reload_service(
     app: AppHandle,
@@ -624,14 +647,30 @@ pub async fn reload_service(
         let snapshot = inner.snapshot();
         (service, data_dir, snapshot)
     };
-    if app.get_webview(&label_for(&id)).is_none() {
-        create_service_webview(&app, &service, &data_dir, true)?;
+    // Webview ops must not run under the state lock (webview creation pumps a
+    // nested message loop — see the locking contract above). Closing is tolerant
+    // of a missing webview, so a service that failed to create is still reloadable.
+    if let Err(e) = close_webview(&app, &id) {
+        eprintln!("reload_service: closing {id} failed: {e}");
     }
-    if let Some(webview) = app.get_webview(&label_for(&id)) {
-        webview
-            .eval("location.reload()")
-            .map_err(|e| e.to_string())?;
-    }
+    let active = snapshot.active_service_id.clone();
+    let is_active = active.as_deref() == Some(id.as_str());
+    // Recreate off the command path (creation pumps a nested message loop) and
+    // only after the old browser process has had time to exit — see RELOAD_SETTLE_MS.
+    let handle = app.clone();
+    let snapshot_for_thread = snapshot.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(RELOAD_SETTLE_MS));
+        if let Err(e) = create_service_webview(&handle, &service, &data_dir, is_active) {
+            crate::state::emit_notice(&handle, &format!("Could not reload the page: {e}"));
+            return;
+        }
+        // Re-apply the geometry/visibility contract: only the active service shows.
+        if let Err(e) = show_only(&handle, active.as_deref()) {
+            eprintln!("reload_service: show_only after reload failed: {e}");
+        }
+        emit_snapshot(&handle, &snapshot_for_thread);
+    });
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
 }
