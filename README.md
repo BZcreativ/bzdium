@@ -34,6 +34,7 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 - **Unread badges** parsed from page titles (capped, spoof-resistant: a page can only ever report its own count)
 - **Hibernation** — idle services' webviews are closed after N minutes and wake on click, freeing RAM
 - **Stuck-page watchdog (on by default)** — webviews that stop answering liveness probes while the machine is online (wedged network stack — seen with Gmail on WebView2 156) are hard-reloaded automatically, capped at 2 reloads per service per 30 minutes; a toast explains every intervention. Toggle: Settings → "Auto-recover stuck pages"
+- **WebView2 runtime pin (Windows)** — Settings → "WebView2 runtime" lets you pin every webview to a specific installed runtime (e.g. hold 155 while a fresh Evergreen build is wedging pages); invalid/removed folders fall back to the system runtime at startup
 - **URL bar** with live URL display, visibility toggle, and Home button
 - **External link control** — open in OS default browser (via `xdg-open` / `ShellExecuteW`) or inside an isolated in-app bzdium window
 - **Workspace export / import** — settings + services as a JSON file (service ids preserved, so local sessions reconnect)
@@ -44,27 +45,27 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 ### Linux x64
 
-Download from the [Latest Release (v0.2.10)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.10) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.10)):
+Download from the [Latest Release (v0.2.11)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.11) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.11)):
 
-- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.10_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.10/bzdium_0.2.10_amd64.deb) (5.5 MB):
+- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.11_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.11/bzdium_0.2.11_amd64.deb) (5.5 MB):
   ```bash
-  sudo apt install ./bzdium_0.2.10_amd64.deb
-  # or: sudo dpkg -i bzdium_0.2.10_amd64.deb
+  sudo apt install ./bzdium_0.2.11_amd64.deb
+  # or: sudo dpkg -i bzdium_0.2.11_amd64.deb
   ```
-- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.10-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.10/bzdium-0.2.10-1.x86_64.rpm) (5.6 MB):
+- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.11-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.11/bzdium-0.2.11-1.x86_64.rpm) (5.6 MB):
   ```bash
-  sudo dnf install ./bzdium-0.2.10-1.x86_64.rpm
-  # or: sudo rpm -i bzdium-0.2.10-1.x86_64.rpm
+  sudo dnf install ./bzdium-0.2.11-1.x86_64.rpm
+  # or: sudo rpm -i bzdium-0.2.11-1.x86_64.rpm
   ```
-- **Universal AppImage** — [`bzdium_0.2.10_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.10/bzdium_0.2.10_amd64.AppImage) (85 MB):
+- **Universal AppImage** — [`bzdium_0.2.11_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.11/bzdium_0.2.11_amd64.AppImage) (85 MB):
   ```bash
-  chmod +x bzdium_0.2.10_amd64.AppImage && ./bzdium_0.2.10_amd64.AppImage
+  chmod +x bzdium_0.2.11_amd64.AppImage && ./bzdium_0.2.11_amd64.AppImage
   ```
 - **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst) (4.2 MB):
   ```bash
   sudo pacman -U bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.10-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.10/bzdium-0.2.10-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.10/bzdium-0.2.10-linux-x64.tgz) (5.3 MB):
+- **Portable Tarball** — [`bzdium-0.2.11-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.11/bzdium-0.2.11-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.11/bzdium-0.2.11-linux-x64.tgz) (5.3 MB):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
@@ -73,8 +74,8 @@ Download from the [Latest Release (v0.2.10)](https://github.com/BZcreativ/bzdium
 
 Download from the [Latest Release](https://github.com/BZcreativ/bzdium/releases/latest):
 
-- **Installer** — [`bzdium_0.2.10_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.10/bzdium_0.2.10_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
-- **Portable** — [`bzdium-v0.2.10-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.10/bzdium-v0.2.10-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
+- **Installer** — [`bzdium_0.2.11_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.11/bzdium_0.2.11_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
+- **Portable** — [`bzdium-v0.2.11-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.11/bzdium-v0.2.11-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
 
 Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can fetch it if missing).
 
@@ -113,6 +114,8 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
+- **v0.2.11** (WebView2 runtime pin):
+  - **New: pin the WebView2 runtime from Settings (Windows).** The Evergreen runtime auto-updates under running apps, and 156.0.4314.x wedges service webviews within minutes (Gmail observed wedging roughly every few minutes of active use, with the watchdog recovering each time until its 2-per-30-minutes budget ran out). Settings → "WebView2 runtime" now lists every installed runtime and pins all webviews to the chosen folder via the WebView2 loader (`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`), applied before the first webview is created — so a change takes effect on the next app start. Measured: Gmail on 155.0.4283.62 stays stable where 156.0.4314.50 cycles. A pin that points at a folder the updater later removes is ignored at startup (system default) and shown as "(missing)" in Settings rather than breaking the app. Also exposed to agents via `patch_settings` (`webview2RuntimeFolder`, null clears it).
 - **v0.2.10** (watchdog):
   - **New: automatic recovery for stuck pages (on by default).** A second, slower variant of the v0.2.8 wedge was observed with Gmail on WebView2 156.0.4314.50 (2026-10-28): the page renders cached content but its sync dies — "Not connected. Connecting in 3:26…" banner, console repeating `Uncaught (in promise) _.Ltb`. The watchdog injects a liveness probe into every service webview (a `no-store` fetch of the page's own origin, reported back over the same gated IPC channel as unread badges) and hard-reloads a webview that has missed 4 consecutive probes (~3 minutes) while the machine is still online. Fresh webviews get a grace period, the OS network is checked before intervening, and interventions are capped at 2 per service per 30 minutes so a genuinely down site is never reload-spammed. Every reload shows a toast. Toggle in Settings → "Auto-recover stuck pages" (`autoRecover`, also exposed to agents via `patch_settings`).
 - **v0.2.9** (Agent Access Layer):
