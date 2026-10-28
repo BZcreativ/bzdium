@@ -466,7 +466,8 @@ body.light .welcome-wordmark-light { display: block; }
 
 .modal input[type="text"],
 .modal input[type="url"],
-.modal input[type="number"] {
+.modal input[type="number"],
+.modal select {
   font: inherit;
   color: var(--text);
   background: var(--bg);
@@ -476,7 +477,15 @@ body.light .welcome-wordmark-light { display: block; }
   outline: none;
 }
 
-.modal input:focus { border-color: var(--accent); }
+.modal input:focus,
+.modal select:focus { border-color: var(--accent); }
+
+/* Small explanation under a Settings control. */
+.settings-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
 
 .checkbox-label {
   flex-direction: row !important;

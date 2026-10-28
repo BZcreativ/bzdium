@@ -30,6 +30,7 @@
     "allow-get-agent-status",
     "allow-set-agent-admin-scope",
     "allow-mint-agent-token",
-    "allow-revoke-agent-tokens"
+    "allow-revoke-agent-tokens",
+    "allow-list-webview2-runtimes"
   ]
 }

@@ -82,6 +82,14 @@ pub struct Settings {
     /// predate this field and adopt the safer-for-users default.
     #[serde(default = "default_auto_recover")]
     pub auto_recover: bool,
+    /// Windows only: absolute folder of a WebView2 runtime to pin every
+    /// webview to (must contain msedgewebview2.exe), applied via the
+    /// WEBVIEW2_BROWSER_EXECUTABLE_FOLDER loader variable before the first
+    /// webview is created — i.e. it takes effect on the NEXT app start.
+    /// None (or anything invalid at startup) means the system Evergreen
+    /// runtime. Older settings.json files predate this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webview2_runtime_folder: Option<String>,
 }
 
 fn default_auto_recover() -> bool {
@@ -100,6 +108,7 @@ impl Default for Settings {
             link_target: LinkTarget::Browser,
             agent_access: false,
             auto_recover: true,
+            webview2_runtime_folder: None,
         }
     }
 }

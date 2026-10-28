@@ -59,6 +59,7 @@ fn main() {
             "get_service_icon",
             "report_title",
             "report_probe",
+            "list_webview2_runtimes",
             "get_agent_status",
             "set_agent_admin_scope",
             "mint_agent_token",

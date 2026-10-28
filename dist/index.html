@@ -144,6 +144,11 @@
         <label class="checkbox-label">
           <input id="set-autorecover" type="checkbox"> Auto-recover stuck pages (reload a page that stopped responding)
         </label>
+        <label id="wv2rt-row" class="hidden">
+          WebView2 runtime (Windows)
+          <select id="set-wv2rt"></select>
+          <span class="settings-hint">Takes effect after restarting bzdium. Pin an older runtime if pages wedge on a fresh one.</span>
+        </label>
         <label class="checkbox-label">
           <input id="set-link-bzdium" type="checkbox"> Open links in a bzdium window instead of my browser
         </label>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-webview2-runtimes"
+description = "Enables the list_webview2_runtimes command without any pre-configured scope."
+commands.allow = ["list_webview2_runtimes"]
+
+[[permission]]
+identifier = "deny-list-webview2-runtimes"
+description = "Denies the list_webview2_runtimes command without any pre-configured scope."
+commands.deny = ["list_webview2_runtimes"]

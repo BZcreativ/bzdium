@@ -21,7 +21,7 @@
       { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 }
     ],
     activeServiceId: "demo-1",
-    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, autoRecover: true, linkTarget: "browser", agentAccess: false },
+    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, autoRecover: true, linkTarget: "browser", agentAccess: false, webview2RuntimeFolder: null },
     totalBadgeCount: 15,
     dataDir: "demo"
   };
@@ -681,6 +681,7 @@
     $("set-autorecover").checked = s.autoRecover !== false;
     $("set-link-bzdium").checked = s.linkTarget === "bzdium";
     $("set-agent-access").checked = !!s.agentAccess;
+    loadWebview2RuntimeOptions(s.webview2RuntimeFolder || null);
     $("settings-error").classList.add("hidden");
     $("agent-error").classList.add("hidden");
     $("agent-token-note").classList.add("hidden");
@@ -691,6 +692,43 @@
     refreshAgentPanel();
     refreshSettingsFooter();
     openModal("settings-modal");
+  }
+
+  /* ----- WebView2 runtime pin (Windows only) -----
+   * The list command returns [] on Linux, so the row is hidden whenever
+   * nothing is available. The stored pin may point at a runtime the
+   * Evergreen updater has since removed — keep it visible (marked) rather
+   * than silently dropping the user's choice. */
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function loadWebview2RuntimeOptions(selected) {
+    var row = $("wv2rt-row");
+    var sel = $("set-wv2rt");
+    cmd("list_webview2_runtimes", {}).then(function (runtimes) {
+      if (!runtimes || !runtimes.length) {
+        row.classList.add("hidden");
+        sel.dataset.value = selected || "";
+        return;
+      }
+      var options = ['<option value="">System default (Evergreen)</option>'];
+      runtimes.forEach(function (r) {
+        var isSel = selected && r.path === selected;
+        options.push('<option value="' + escapeHtml(r.path) + '"' + (isSel ? " selected" : "") + ">" +
+                     escapeHtml(r.version) + "</option>");
+      });
+      if (selected && !runtimes.some(function (r) { return r.path === selected; })) {
+        options.push('<option value="' + escapeHtml(selected) + '" selected>' +
+                     escapeHtml(selected) + " (missing)</option>");
+      }
+      sel.innerHTML = options.join("");
+      row.classList.remove("hidden");
+    }).catch(function () {
+      row.classList.add("hidden");
+    });
   }
 
   /* ----- Agent Access panel -----
@@ -850,6 +888,11 @@
       $("settings-error").classList.remove("hidden");
       return;
     }
+    var prevRuntime = (currentState && currentState.settings && currentState.settings.webview2RuntimeFolder) || null;
+    // Options load asynchronously on modal open; if they have not arrived
+    // yet, keep the stored pin instead of silently clearing it.
+    var wv2rtSel = $("set-wv2rt");
+    var runtimeFolder = wv2rtSel.options.length ? (wv2rtSel.value || null) : prevRuntime;
     cmd("update_settings", {
       settings: {
         hibernationMinutes: minutes,
@@ -860,10 +903,16 @@
         devMode: $("set-devmode").checked,
         autoRecover: $("set-autorecover").checked,
         linkTarget: $("set-link-bzdium").checked ? "bzdium" : "browser",
-        agentAccess: $("set-agent-access").checked
+        agentAccess: $("set-agent-access").checked,
+        webview2RuntimeFolder: runtimeFolder
       }
-    }).then(function () { closeModal("settings-modal"); })
-      .catch(function () {});
+    }).then(function () {
+      closeModal("settings-modal");
+      // The runtime pin is read once at startup; a change needs a restart.
+      if (runtimeFolder !== prevRuntime) {
+        toast("WebView2 runtime pin saved — restart bzdium to apply it.");
+      }
+    }).catch(function () {});
   });
 
   /* ----- Export / import configuration ----- */

@@ -8,6 +8,7 @@ mod storage;
 mod tray;
 mod webviews;
 mod watchdog;
+mod webview2_runtime;
 #[cfg(target_os = "linux")]
 pub mod linux_layout;
 
@@ -39,6 +40,15 @@ fn update_settings(
     state: State<'_, SharedState>,
     settings: Settings,
 ) -> Result<AppState, String> {
+    // A pinned WebView2 runtime must be a real runtime folder; refuse to
+    // persist anything the startup path would silently ignore (see run()).
+    if let Some(folder) = settings.webview2_runtime_folder.as_deref() {
+        if !webview2_runtime::folder_is_valid(std::path::Path::new(folder)) {
+            return Err(format!(
+                "'{folder}' is not a WebView2 runtime folder (msedgewebview2.exe not found)."
+            ));
+        }
+    }
     let mut inner = state.lock().map_err(|e| e.to_string())?;
     let portable = is_portable_layout(&inner.data_dir);
     if settings.start_with_windows && portable {
@@ -158,6 +168,18 @@ pub fn run() {
     let data_dir = storage::resolve_data_dir();
     let initial_state = StateInner::new(data_dir);
 
+    // WebView2 runtime pin: must happen before the first webview exists,
+    // i.e. before the Builder creates the main window. An invalid stored
+    // folder (e.g. removed by the Evergreen updater) degrades to the system
+    // runtime rather than failing startup.
+    if let Some(folder) = initial_state.settings.webview2_runtime_folder.clone() {
+        if webview2_runtime::apply_override(&folder) {
+            eprintln!("webview2: pinning runtime folder {folder}");
+        } else {
+            eprintln!("webview2: ignoring invalid runtime folder {folder:?}");
+        }
+    }
+
     tauri::Builder::default()
         // Must stay the first plugin: a second launch (e.g. clicking the exe
         // again, or a second copy of the portable folder) must never run a
@@ -202,6 +224,7 @@ pub fn run() {
             revoke_agent_tokens,
             badges::report_title,
             watchdog::report_probe,
+            webview2_runtime::list_webview2_runtimes,
         ])
         .setup(|app| {
             tray::setup_tray(app)?;

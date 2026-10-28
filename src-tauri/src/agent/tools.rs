@@ -255,11 +255,37 @@ fn h_patch_settings<'a>(ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result<
             next.link_target = target;
             changed.push("linkTarget");
         }
+        if args.get("webview2RuntimeFolder").is_some() {
+            // String pins a runtime folder (validated by update_settings),
+            // explicit null clears the pin back to the system runtime.
+            let folder = match args.get("webview2RuntimeFolder") {
+                Some(Value::String(v)) => Some(v.clone()),
+                Some(Value::Null) => None,
+                _ => {
+                    return Err(AgentError::invalid_parameter(
+                        "webview2RuntimeFolder",
+                        "webview2RuntimeFolder must be a runtime folder path or null.",
+                        "Call list_webview2_runtimes from the UI capability, or pass null to clear the pin.",
+                    ))
+                }
+            };
+            if let Some(f) = folder.as_deref() {
+                if !crate::webview2_runtime::folder_is_valid(std::path::Path::new(f)) {
+                    return Err(AgentError::invalid_parameter(
+                        "webview2RuntimeFolder",
+                        format!("'{f}' does not contain msedgewebview2.exe."),
+                        "Use an absolute path to an installed WebView2 runtime folder; it takes effect on the next app start.",
+                    ));
+                }
+            }
+            next.webview2_runtime_folder = folder;
+            changed.push("webview2RuntimeFolder");
+        }
         if changed.is_empty() {
             return Err(AgentError::invalid_parameter(
                 "settings",
                 "No recognised settings fields were supplied.",
-                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, autoRecover, linkTarget.",
+                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, autoRecover, linkTarget, webview2RuntimeFolder.",
             ));
         }
 
@@ -484,6 +510,7 @@ fn p_patch_settings<'a>(_ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result
             "devMode",
             "autoRecover",
             "linkTarget",
+            "webview2RuntimeFolder",
         ] {
             if args.get(k).is_some() {
                 keys.push(k);
@@ -493,7 +520,7 @@ fn p_patch_settings<'a>(_ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result
             return Err(AgentError::invalid_parameter(
                 "settings",
                 "No recognised settings fields were supplied.",
-                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, autoRecover, linkTarget.",
+                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, autoRecover, linkTarget, webview2RuntimeFolder.",
             ));
         }
         Ok(json!({ "wouldPatch": keys }))
@@ -646,6 +673,16 @@ fn s_patch_settings() -> Value {
                     "Where new-window links from service pages open.",
                     &["browser", "bzdium"],
                 ),
+            ),
+            (
+                "webview2RuntimeFolder",
+                json!({
+                    "description": "Windows: absolute path of a WebView2 runtime folder (must contain msedgewebview2.exe) to pin every webview to; null clears the pin. Takes effect on the next app start.",
+                    "anyOf": [
+                        { "type": "string" },
+                        { "type": "null" }
+                    ]
+                }),
             ),
             ("dryRun", dry_run_prop()),
         ]),
