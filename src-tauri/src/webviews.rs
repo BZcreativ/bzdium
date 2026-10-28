@@ -327,6 +327,7 @@ pub fn create_service_webview(
     let builder = tauri::webview::WebviewBuilder::<Wry>::new(label, WebviewUrl::External(url))
         .data_directory(session_dir)
         .initialization_script(badges::init_script(&service.id))
+        .initialization_script(crate::watchdog::probe_script(&service.id))
         .on_page_load(|webview, payload| {
             // Drives the URL bar and feeds the badge origin gate.
             // Deliberately lock-free: label + url only.
@@ -630,31 +631,47 @@ pub async fn reload_service(
     state: State<'_, SharedState>,
     id: String,
 ) -> Result<AppState, String> {
+    // Surface UNKNOWN_SERVICE_ID through the injected state like every other
+    // command, then delegate to the shared hard-reload path.
+    {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        if inner.service(&id).is_none() {
+            return Err(format!("unknown service id {id}"));
+        }
+    }
+    schedule_hard_reload(&app, &id)
+}
+
+/// Shared hard-reload path: the Reload command, the page watchdog
+/// (`watchdog.rs`), and any future recovery flow all go through here, so
+/// there is exactly one teardown/rebuild sequence to reason about.
+pub fn schedule_hard_reload(app: &AppHandle, id: &str) -> Result<AppState, String> {
+    let state: tauri::State<'_, SharedState> = app.state();
     let (service, data_dir, snapshot) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
         let service = inner
-            .service(&id)
+            .service(id)
             .cloned()
             .ok_or_else(|| format!("unknown service id {id}"))?;
         let data_dir = inner.data_dir.clone();
         if service.hibernated {
-            if let Some(s) = inner.service_mut(&id) {
+            if let Some(s) = inner.service_mut(id) {
                 s.hibernated = false;
             }
             inner.save_services()?;
         }
-        inner.touch(&id);
+        inner.touch(id);
         let snapshot = inner.snapshot();
         (service, data_dir, snapshot)
     };
     // Webview ops must not run under the state lock (webview creation pumps a
     // nested message loop — see the locking contract above). Closing is tolerant
     // of a missing webview, so a service that failed to create is still reloadable.
-    if let Err(e) = close_webview(&app, &id) {
-        eprintln!("reload_service: closing {id} failed: {e}");
+    if let Err(e) = close_webview(app, id) {
+        eprintln!("reload: closing {id} failed: {e}");
     }
     let active = snapshot.active_service_id.clone();
-    let is_active = active.as_deref() == Some(id.as_str());
+    let is_active = active.as_deref() == Some(id);
     // Recreate off the command path (creation pumps a nested message loop) and
     // only after the old browser process has had time to exit — see RELOAD_SETTLE_MS.
     let handle = app.clone();
@@ -667,7 +684,7 @@ pub async fn reload_service(
         }
         // Re-apply the geometry/visibility contract: only the active service shows.
         if let Err(e) = show_only(&handle, active.as_deref()) {
-            eprintln!("reload_service: show_only after reload failed: {e}");
+            eprintln!("reload: show_only after reload failed: {e}");
         }
         emit_snapshot(&handle, &snapshot_for_thread);
     });

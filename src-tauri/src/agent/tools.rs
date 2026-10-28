@@ -233,6 +233,7 @@ fn h_patch_settings<'a>(ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result<
             ("darkUi", &mut next.dark_ui),
             ("showUrlBar", &mut next.show_url_bar),
             ("devMode", &mut next.dev_mode),
+            ("autoRecover", &mut next.auto_recover),
         ] {
             if let Some(v) = args.get(key).and_then(Value::as_bool) {
                 *field = v;
@@ -258,7 +259,7 @@ fn h_patch_settings<'a>(ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result<
             return Err(AgentError::invalid_parameter(
                 "settings",
                 "No recognised settings fields were supplied.",
-                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, linkTarget.",
+                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, autoRecover, linkTarget.",
             ));
         }
 
@@ -481,6 +482,7 @@ fn p_patch_settings<'a>(_ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result
             "darkUi",
             "showUrlBar",
             "devMode",
+            "autoRecover",
             "linkTarget",
         ] {
             if args.get(k).is_some() {
@@ -491,7 +493,7 @@ fn p_patch_settings<'a>(_ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result
             return Err(AgentError::invalid_parameter(
                 "settings",
                 "No recognised settings fields were supplied.",
-                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, linkTarget.",
+                "Supply at least one of: hibernationMinutes, minimizeToTray, startWithWindows, darkUi, showUrlBar, devMode, autoRecover, linkTarget.",
             ));
         }
         Ok(json!({ "wouldPatch": keys }))
@@ -637,6 +639,7 @@ fn s_patch_settings() -> Value {
             ("darkUi", boolean("Use the dark theme.")),
             ("showUrlBar", boolean("Show the address bar above the service content.")),
             ("devMode", boolean("Surface DevTools entries in the UI for troubleshooting.")),
+            ("autoRecover", boolean("Watchdog: hard-reload a service page that stopped responding while the machine is online.")),
             (
                 "linkTarget",
                 super::schema::string_enum(

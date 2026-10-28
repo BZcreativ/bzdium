@@ -1,12 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "service-webviews",
-  "description": "Remote service pages (https) may only report their page title, which drives unread badges. Nothing else is exposed to web content.",
+  "description": "Remote service pages (https) may only report their page title, which drives unread badges, and answer the watchdog's liveness probe. Nothing else is exposed to web content.",
   "windows": ["main"],
   "webviews": ["service-*"],
   "local": false,
   "remote": {
     "urls": ["https://*", "https://*:*"]
   },
-  "permissions": ["allow-report-title"]
+  "permissions": ["allow-report-title", "allow-report-probe"]
 }

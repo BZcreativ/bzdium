@@ -7,6 +7,7 @@ mod state;
 mod storage;
 mod tray;
 mod webviews;
+mod watchdog;
 #[cfg(target_os = "linux")]
 pub mod linux_layout;
 
@@ -200,10 +201,12 @@ pub fn run() {
             mint_agent_token,
             revoke_agent_tokens,
             badges::report_title,
+            watchdog::report_probe,
         ])
         .setup(|app| {
             tray::setup_tray(app)?;
             hibernate::start_hibernation_task(app.handle().clone());
+            watchdog::start_watchdog_task(app.handle().clone());
 
             // Agent Access Layer: opt-in, loopback-only. Starts nothing unless
             // the user enabled it; see agent::startup for the security rules.

@@ -76,6 +76,16 @@ pub struct Settings {
     /// an unknown field must never silently enable a network listener.
     #[serde(default)]
     pub agent_access: bool,
+    /// Watchdog: hard-reload a service webview that stopped answering
+    /// liveness probes while the machine is online (recovery for wedged
+    /// pages — see `watchdog.rs`). ON by default; older settings.json files
+    /// predate this field and adopt the safer-for-users default.
+    #[serde(default = "default_auto_recover")]
+    pub auto_recover: bool,
+}
+
+fn default_auto_recover() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -89,6 +99,7 @@ impl Default for Settings {
             dev_mode: false,
             link_target: LinkTarget::Browser,
             agent_access: false,
+            auto_recover: true,
         }
     }
 }

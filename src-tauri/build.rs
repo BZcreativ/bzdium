@@ -58,6 +58,7 @@ fn main() {
             "reset_service_icon",
             "get_service_icon",
             "report_title",
+            "report_probe",
             "get_agent_status",
             "set_agent_admin_scope",
             "mint_agent_token",

@@ -21,7 +21,7 @@
       { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 }
     ],
     activeServiceId: "demo-1",
-    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, linkTarget: "browser", agentAccess: false },
+    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, autoRecover: true, linkTarget: "browser", agentAccess: false },
     totalBadgeCount: 15,
     dataDir: "demo"
   };
@@ -678,6 +678,7 @@
     $("set-urlbar").checked = s.showUrlBar !== false;
     $("set-dark").checked = s.darkUi !== false;
     $("set-devmode").checked = !!s.devMode;
+    $("set-autorecover").checked = s.autoRecover !== false;
     $("set-link-bzdium").checked = s.linkTarget === "bzdium";
     $("set-agent-access").checked = !!s.agentAccess;
     $("settings-error").classList.add("hidden");
@@ -857,6 +858,7 @@
         showUrlBar: $("set-urlbar").checked,
         darkUi: $("set-dark").checked,
         devMode: $("set-devmode").checked,
+        autoRecover: $("set-autorecover").checked,
         linkTarget: $("set-link-bzdium").checked ? "bzdium" : "browser",
         agentAccess: $("set-agent-access").checked
       }
