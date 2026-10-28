@@ -113,7 +113,7 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
-- **Unreleased** (watchdog):
+- **v0.2.10** (watchdog):
   - **New: automatic recovery for stuck pages (on by default).** A second, slower variant of the v0.2.8 wedge was observed with Gmail on WebView2 156.0.4314.50 (2026-10-28): the page renders cached content but its sync dies — "Not connected. Connecting in 3:26…" banner, console repeating `Uncaught (in promise) _.Ltb`. The watchdog injects a liveness probe into every service webview (a `no-store` fetch of the page's own origin, reported back over the same gated IPC channel as unread badges) and hard-reloads a webview that has missed 4 consecutive probes (~3 minutes) while the machine is still online. Fresh webviews get a grace period, the OS network is checked before intervening, and interventions are capped at 2 per service per 30 minutes so a genuinely down site is never reload-spammed. Every reload shows a toast. Toggle in Settings → "Auto-recover stuck pages" (`autoRecover`, also exposed to agents via `patch_settings`).
 - **v0.2.9** (Agent Access Layer):
   - **New: an opt-in Agent Access API.** The app's existing command surface is now exposed to local AI agents over two transports — MCP (JSON-RPC 2.0) and REST — both projected from a single tool registry, so a REST call, an MCP `tools/call` and a UI click all reach the same Rust function. Off by default; enable it explicitly in Settings.
