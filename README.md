@@ -46,19 +46,19 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 ### Linux x64
 
-Download from the [Latest Release (v0.2.13)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.13) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.13)):
+Download from the [Latest Release (v0.2.14)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.14) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.14)):
 
-- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.13_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.13/bzdium_0.2.13_amd64.deb) (5.5 MB):
+- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.13_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium_0.2.13_amd64.deb) (5.5 MB):
   ```bash
   sudo apt install ./bzdium_0.2.13_amd64.deb
   # or: sudo dpkg -i bzdium_0.2.13_amd64.deb
   ```
-- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.13-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.13/bzdium-0.2.13-1.x86_64.rpm) (5.6 MB):
+- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.13-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-0.2.13-1.x86_64.rpm) (5.6 MB):
   ```bash
   sudo dnf install ./bzdium-0.2.13-1.x86_64.rpm
   # or: sudo rpm -i bzdium-0.2.13-1.x86_64.rpm
   ```
-- **Universal AppImage** — [`bzdium_0.2.13_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.13/bzdium_0.2.13_amd64.AppImage) (85 MB):
+- **Universal AppImage** — [`bzdium_0.2.13_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium_0.2.13_amd64.AppImage) (85 MB):
   ```bash
   chmod +x bzdium_0.2.13_amd64.AppImage && ./bzdium_0.2.13_amd64.AppImage
   ```
@@ -66,7 +66,7 @@ Download from the [Latest Release (v0.2.13)](https://github.com/BZcreativ/bzdium
   ```bash
   sudo pacman -U bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.13-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.13/bzdium-0.2.13-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.13/bzdium-0.2.13-linux-x64.tgz) (5.3 MB):
+- **Portable Tarball** — [`bzdium-0.2.13-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-0.2.13-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-0.2.13-linux-x64.tgz) (5.3 MB):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
@@ -75,8 +75,8 @@ Download from the [Latest Release (v0.2.13)](https://github.com/BZcreativ/bzdium
 
 Download from the [Latest Release](https://github.com/BZcreativ/bzdium/releases/latest):
 
-- **Installer** — [`bzdium_0.2.13_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.13/bzdium_0.2.13_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
-- **Portable** — [`bzdium-v0.2.13-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.13/bzdium-v0.2.13-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
+- **Installer** — [`bzdium_0.2.13_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium_0.2.13_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
+- **Portable** — [`bzdium-v0.2.14-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-v0.2.14-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
 
 Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can fetch it if missing).
 
@@ -115,7 +115,7 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
-- **v0.2.13** (side-loadable WebView2 runtimes):
+- **v0.2.14** (side-loadable WebView2 runtimes):
   - **New: hold a runtime the Evergreen updater deletes.** Hours after v0.2.11 pinned WebView2 155, the Evergreen updater removed the 155 folder from its own roots — the pin's fail-safe correctly degraded to the system runtime (156, which wedges Gmail). Microsoft's supported answer for holding a build is the **Fixed Version** distribution; bzdium now accepts a Fixed Version runtime extracted into **`<dataDir>/webview2-runtimes/<version>/`**: such runtimes appear in the Settings "WebView2 runtime" list, pass the pin's path validation, and are never touched by the updater. This is a third allowed root alongside the machine-wide and per-user Evergreen roots; arbitrary folders remain rejected.
 - **v0.2.12** (hardening — external code review):
   - Fix-by-fix remediation of an independent code review of the whole codebase @ v0.2.11 (all four High, most Medium/Low findings; 8 new tests).
