@@ -270,11 +270,11 @@ fn h_patch_settings<'a>(ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result<
                 }
             };
             if let Some(f) = folder.as_deref() {
-                if !crate::webview2_runtime::folder_is_valid(std::path::Path::new(f)) {
+                if !crate::webview2_runtime::folder_is_allowed(f) {
                     return Err(AgentError::invalid_parameter(
                         "webview2RuntimeFolder",
-                        format!("'{f}' does not contain msedgewebview2.exe."),
-                        "Use an absolute path to an installed WebView2 runtime folder; it takes effect on the next app start.",
+                        format!("'{f}' is not an installed WebView2 runtime under a known install root."),
+                        "Use a path returned by the Settings 'WebView2 runtime' list; it takes effect on the next app start.",
                     ));
                 }
             }

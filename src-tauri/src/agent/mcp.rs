@@ -596,6 +596,11 @@ fn read_envelope(value: &Value) -> Result<(Value, String, Option<Value>), Value>
     Ok((id, method.to_string(), obj.get("params").cloned()))
 }
 
+/// Upper bound on a JSON-RPC batch. The rate limit is charged per HTTP
+/// request, so without a cap one POST could carry an arbitrary number of
+/// tool calls (mutations included) on a single budget token.
+const MAX_BATCH: usize = 20;
+
 /// Handles a complete JSON-RPC payload: one request object, or a batch array.
 ///
 /// Returns Value::Null when the payload contains only notifications, which the
@@ -611,6 +616,17 @@ pub async fn handle(ctx: Arc<AgentCtx>, granted: Scope, actor: String, payload: 
                         ErrorCode::InvalidParameter,
                         "An empty batch is not a valid JSON-RPC request.",
                         "Send at least one request object, or omit the array.",
+                    ),
+                );
+            }
+            if items.len() > MAX_BATCH {
+                return error_object(
+                    Value::Null,
+                    code::INVALID_REQUEST,
+                    &AgentError::new(
+                        ErrorCode::RateLimited,
+                        format!("A batch may carry at most {MAX_BATCH} requests; got {}.", items.len()),
+                        "Split the batch into chunks of at most 20 requests.",
                     ),
                 );
             }

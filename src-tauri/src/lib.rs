@@ -40,12 +40,13 @@ fn update_settings(
     state: State<'_, SharedState>,
     settings: Settings,
 ) -> Result<AppState, String> {
-    // A pinned WebView2 runtime must be a real runtime folder; refuse to
-    // persist anything the startup path would silently ignore (see run()).
+    // A pinned WebView2 runtime must be a real runtime folder under a known
+    // Evergreen root; refuse to persist anything the startup path would
+    // silently ignore (see run()) — the loader executes from this folder.
     if let Some(folder) = settings.webview2_runtime_folder.as_deref() {
-        if !webview2_runtime::folder_is_valid(std::path::Path::new(folder)) {
+        if !webview2_runtime::folder_is_allowed(folder) {
             return Err(format!(
-                "'{folder}' is not a WebView2 runtime folder (msedgewebview2.exe not found)."
+                "'{folder}' is not an installed WebView2 runtime folder (msedgewebview2.exe not found under a known install root)."
             ));
         }
     }
@@ -67,25 +68,40 @@ fn update_settings(
     }
     inner.settings = settings;
     inner.save_settings()?;
-    autostart::apply(inner.settings.start_with_windows)?;
     let agent_access = inner.settings.agent_access;
+    let start_with_windows = inner.settings.start_with_windows;
     let data_dir = inner.data_dir.clone();
     let snapshot = inner.snapshot();
     drop(inner);
-    // The URL-bar toggle changes service webview geometry — re-apply it.
+    // The URL-bar toggle changes service webview geometry — re-apply it, and
+    // emit BEFORE any fallible post-persist step (autostart's registry write
+    // below): the settings are already on disk, so an error after them must
+    // not leave the UI showing stale state.
     webviews::sync_bounds(&app);
     emit_snapshot(&app, &snapshot);
 
-    // Mirror the checkbox into the layer's own config and mint a first token
-    // when the layer is switched on without one. Without this the checkbox
-    // would write settings.json while startup reads agent/config.json, and the
-    // listener would never bind.
-    let current_admin = agent::load_config(&data_dir).allow_admin_scope;
-    if let Err(e) = agent::wire::sync_from_settings(&data_dir, agent_access, current_admin) {
+    sync_agent_layer(&app, &data_dir, agent_access);
+
+    // Registry write goes last: failure here is reported to the caller, but
+    // the snapshot above already reflects the saved settings.
+    autostart::apply(start_with_windows)?;
+
+    Ok(snapshot)
+}
+
+/// Post-persist side effects that must follow EVERY change of
+/// `settings.agent_access` (update_settings and import_config). Mirrors the
+/// checkbox into the layer's own config, mints a first token when the layer
+/// is switched on without one, and opens/closes the runtime gate. Without
+/// this, an imported config could show Agent Access off while the loopback
+/// listener keeps serving existing bearer tokens (or vice versa).
+fn sync_agent_layer(app: &AppHandle, data_dir: &std::path::Path, agent_access: bool) {
+    let current_admin = agent::load_config(data_dir).allow_admin_scope;
+    if let Err(e) = agent::wire::sync_from_settings(data_dir, agent_access, current_admin) {
         eprintln!("agent: cannot persist agent config: {e}");
     }
     if agent_access {
-        match agent::wire::ensure_first_token(&data_dir, current_admin) {
+        match agent::wire::ensure_first_token(data_dir, current_admin) {
             Ok(Some(token)) => {
                 // Shown once in the UI; never logged, never retrievable again.
                 use tauri::Emitter as _;
@@ -95,9 +111,7 @@ fn update_settings(
             Err(e) => eprintln!("agent: cannot mint the first token: {e}"),
         }
     }
-    agent::startup::apply_enabled(&app, agent_access);
-
-    Ok(snapshot)
+    agent::startup::apply_enabled(app, agent_access);
 }
 
 // ---------------------------------------------------------------------------

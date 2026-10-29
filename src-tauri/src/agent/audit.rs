@@ -70,12 +70,20 @@ pub fn redact(value: &Value) -> Value {
     }
     let walked = walk(value);
     // Cap serialised size so a huge import_config payload cannot bloat the log.
+    // `get(..2048)` returns None when the cut lands inside a multi-byte UTF-8
+    // character — back off to the previous boundary instead of slicing at a
+    // byte offset (which would panic, and this runs on the audit path AFTER a
+    // mutation may already have committed).
     let rendered = walked.to_string();
     if rendered.len() > 2048 {
+        let mut cut = 2048;
+        while !rendered.is_char_boundary(cut) {
+            cut -= 1;
+        }
         serde_json::json!({
             "truncated": true,
             "bytes": rendered.len(),
-            "preview": &rendered[..2048.min(rendered.len())],
+            "preview": &rendered[..cut],
         })
     } else {
         walked
@@ -153,6 +161,20 @@ mod tests {
         let r = redact(&big);
         assert_eq!(r["truncated"], true);
         assert!(r["preview"].as_str().unwrap().len() <= 2048);
+    }
+
+    #[test]
+    fn redact_never_panics_on_multibyte_at_the_cut() {
+        // A payload whose 2048th byte falls inside a multi-byte character
+        // must truncate at the previous boundary, not panic.
+        let mut blob = "é".repeat(1200); // 2 bytes per char
+        blob.push_str(&"x".repeat(100));
+        let big = serde_json::json!({ "blob": blob });
+        let r = redact(&big);
+        assert_eq!(r["truncated"], true);
+        let preview = r["preview"].as_str().unwrap();
+        assert!(preview.len() <= 2048);
+        assert!(std::str::from_utf8(preview.as_bytes()).is_ok());
     }
 
     #[test]

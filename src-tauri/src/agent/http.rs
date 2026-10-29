@@ -139,11 +139,14 @@ pub fn load_tokens(data_dir: &Path) -> TokenStore {
 }
 
 pub fn save_tokens(data_dir: &Path, store: &TokenStore) -> Result<(), String> {
-    let dir = agent_dir(data_dir);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let dir = super::ensure_agent_dir(data_dir)?;
     let text = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
-    crate::storage::atomic_write(&tokens_path(data_dir), &text)
-        .map_err(|e| format!("cannot write the agent token file: {e}"))
+    let path = dir.join(TOKENS_FILE);
+    crate::storage::atomic_write(&path, &text)
+        .map_err(|e| format!("cannot write the agent token file: {e}"))?;
+    // Bearer keys at rest: owner-only on the platforms that have a umask.
+    super::restrict_file(&path);
+    Ok(())
 }
 
 /// Mints a fresh credential. Entropy comes from uuid v4 (CSPRNG-backed), and
@@ -820,6 +823,10 @@ impl AgentBackend for RegistryBackend {
         let data_dir = self.ctx.data_dir.clone();
         Box::pin(async move {
             let started = Instant::now();
+            // Redact BEFORE dispatch: this must never be able to fail after a
+            // mutation has executed (the audit write below is the only record
+            // of what an agent did).
+            let redacted_args = redact(&req.args);
             let result = dispatch(&ctx, &req.name, req.args.clone(), req.dry_run).await;
             let elapsed = started.elapsed();
             let mut entry = RegistryBackend::audit_entry(
@@ -831,7 +838,7 @@ impl AgentBackend for RegistryBackend {
                 None,
                 elapsed,
             );
-            entry.args = Some(redact(&req.args));
+            entry.args = Some(redacted_args);
             match result {
                 Ok(dispatched) => {
                     entry.dry_run = Some(dispatched.dry_run);

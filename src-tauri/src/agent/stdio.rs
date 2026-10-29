@@ -112,10 +112,29 @@ pub fn resolve_port() -> Result<u16, String> {
     })
 }
 
-/// Reads the bearer token from the environment.
+/// Reads the bearer token from the environment. The value is interpolated
+/// verbatim into an `Authorization` header, so anything header-hostile
+/// (CR/LF, leading/trailing whitespace inside, control bytes) is refused
+/// outright — a "token" containing CRLF is header injection, and a token
+/// without the bzd_agt_ prefix could never authenticate anyway.
 pub fn resolve_token() -> Result<String, String> {
+    let bad = |why: &str| Err(format!("{TOKEN_ENV} is invalid: {why}"));
     match std::env::var(TOKEN_ENV) {
-        Ok(t) if !t.trim().is_empty() => Ok(t.trim().to_string()),
+        Ok(t) => {
+            let t = t.trim();
+            if t.is_empty() {
+                return Err(format!(
+                    "{TOKEN_ENV} is not set. Mint an agent token in bzdium Settings, then export it as {TOKEN_ENV}."
+                ));
+            }
+            if !t.starts_with("bzd_agt_") {
+                return bad("every bzdium token starts with 'bzd_agt_'.");
+            }
+            if t.bytes().any(|b| b < 0x20 || b == 0x7f) {
+                return bad("control characters (including CR/LF) are never part of a token.");
+            }
+            Ok(t.to_string())
+        }
         _ => Err(format!(
             "{TOKEN_ENV} is not set. Mint an agent token in bzdium Settings, then export it as {TOKEN_ENV}."
         )),

@@ -185,6 +185,32 @@ pub const TOKENS_FILE: &str = "tokens.json";
 pub const PORT_FILE: &str = "port";
 pub const AUDIT_FILE: &str = "audit.jsonl";
 
+/// Creates the agent dir (if needed) restricted to the current user. On
+/// multi-user Linux machines the default umask would leave `agent/`
+/// world-readable, and tokens.json holds usable bearer keys.
+pub fn ensure_agent_dir(data_dir: &Path) -> Result<std::path::PathBuf, String> {
+    let dir = agent_dir(data_dir);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
+    Ok(dir)
+}
+
+/// Tightens a freshly written file to owner-only. Windows has no umask to
+/// tighten from (access is governed by the profile-directory ACLs), so this
+/// is a no-op there.
+#[cfg(unix)]
+pub fn restrict_file(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+}
+
+#[cfg(not(unix))]
+pub fn restrict_file(_path: &Path) {}
+
 /// Loads the agent config. A missing or corrupt file resolves to disabled:
 /// the layer must fail closed.
 pub fn load_config(data_dir: &Path) -> AgentConfig {
@@ -199,11 +225,13 @@ pub fn load_config(data_dir: &Path) -> AgentConfig {
 }
 
 pub fn save_config(data_dir: &Path, config: &AgentConfig) -> Result<(), String> {
-    let dir = agent_dir(data_dir);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let dir = ensure_agent_dir(data_dir)?;
     let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    crate::storage::atomic_write(&dir.join(CONFIG_FILE), &json)
-        .map_err(|e| format!("cannot write agent config: {e}"))
+    let path = dir.join(CONFIG_FILE);
+    crate::storage::atomic_write(&path, &json)
+        .map_err(|e| format!("cannot write agent config: {e}"))?;
+    restrict_file(&path);
+    Ok(())
 }
 
 /// Shared, immutable snapshot handed to every transport.

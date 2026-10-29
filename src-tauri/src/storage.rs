@@ -147,8 +147,26 @@ pub fn load_settings(data_dir: &Path) -> Settings {
 /// Loads configured services. Runtime fields (`badge_count`) are reset, and
 /// services from older config files (pre-icon system) get their brand icon
 /// slug backfilled from their URL — additive only, never overwrites.
+///
+/// Service ids become directory names under `sessions/` and are used in
+/// `remove_dir_all` calls, so an id that is not a UUID (possible only in a
+/// hand-tampered services.json) is dropped at load: a `../`-shaped id must
+/// never reach path joins.
 pub fn load_services(data_dir: &Path) -> Vec<Service> {
     let mut services: Vec<Service> = load_or_default(&data_dir.join(SERVICES_FILE));
+    // Ids become directory names under `sessions/` and feed `remove_dir_all`,
+    // so a non-UUID id (possible only in a hand-tampered services.json) is
+    // dropped at load: a `../`-shaped id must never reach a path join.
+    services.retain(|s| {
+        let ok = uuid::Uuid::parse_str(&s.id).is_ok();
+        if !ok {
+            eprintln!(
+                "services: dropping service {:?}: id is not a UUID (tampered services.json?)",
+                s.name
+            );
+        }
+        ok
+    });
     for s in &mut services {
         s.badge_count = 0;
         if s.icon_id.is_none() {

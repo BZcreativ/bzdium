@@ -498,6 +498,11 @@ pub async fn update_service(
     enabled: bool,
     ignore_tls_errors: Option<bool>,
 ) -> Result<AppState, String> {
+    // Same rule as add_service: a blank name would render an empty sidebar row.
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("service name must not be empty".to_string());
+    }
     let url = validate_https_url(&url)?;
     let requested_tls_bypass = ignore_tls_errors.unwrap_or(false);
     if requested_tls_bypass && !tls_bypass_allowed_for_url(&url) {
@@ -924,8 +929,9 @@ pub fn import_config_from_path(
 
     // Phase 1 (locked): replace state + persist. Imported `startWithWindows`
     // is deliberately ignored (a config file must not silently flip the
-    // HKCU Run key) — the current value is kept.
-    let (first_id, keep_ids, data_dir) = {
+    // HKCU Run key) — the current value is kept. `agentAccess` however MUST
+    // travel: it is re-synced in phase 2 so the listener and the UI agree.
+    let (first_id, keep_ids, data_dir, agent_access) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
         let mut new_settings = config.settings;
         new_settings.start_with_windows = inner.settings.start_with_windows;
@@ -935,6 +941,7 @@ pub fn import_config_from_path(
         inner.active_service_id = None;
         inner.save_settings()?;
         inner.save_services()?;
+        let agent_access = inner.settings.agent_access;
         let first_id = inner
             .services
             .iter()
@@ -943,11 +950,14 @@ pub fn import_config_from_path(
         let keep_ids: std::collections::HashSet<String> =
             inner.services.iter().map(|s| s.id.clone()).collect();
         let data_dir = inner.data_dir.clone();
-        (first_id, keep_ids, data_dir)
+        (first_id, keep_ids, data_dir, agent_access)
     };
 
     // Phase 2 (unlocked): side effects. Activation failure must NOT abort
     // the import (state was already replaced) — log and still notify.
+    // The imported `agentAccess` gets the same side-effect treatment as
+    // update_settings, or the checkbox and the live listener would desync.
+    crate::sync_agent_layer(&app, &data_dir, agent_access);
     for (_label, webview) in app.webviews() {
         if webview.label().starts_with("service-") {
             let _ = webview.close();
