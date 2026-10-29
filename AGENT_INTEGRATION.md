@@ -16,7 +16,7 @@ Both transports serve **the exact same tool registry**. There is no second imple
 The Agent Access Layer is **off by default**. Nothing listens until a human turns it on, and two separate switches must agree before a socket is bound.
 
 1. Open bzdium → **Settings** → tick **Enable Agent Access API (MCP + REST)**.
-2. bzdium immediately mints a **write-scoped** key and shows it in the Agent Access panel. **Copy it now** — it is displayed once and never stored in plaintext.
+2. bzdium immediately mints a **write-scoped** key and shows it in the Agent Access panel. **Copy it now** — the value is displayed only once. It is stored in `<dataDir>/agent/tokens.json` so it survives restarts; that file (and the `agent/` directory) is restricted to the current user on platforms with file permissions (0600/0700 on Linux).
 3. The loopback listener starts on `127.0.0.1` and writes its port to `<dataDir>/agent/port`.
 
 No restart is needed: enabling and disabling both take effect on the next request.
@@ -70,8 +70,8 @@ Admin tools can delete services and **replace the user's entire configuration**,
 
 | Variable | Used by | Meaning |
 | :--- | :--- | :--- |
-| `BZDIUM_AGENT_API_KEY` | `--mcp-stdio`, HTTP clients | The bearer token. Must be `bzd_agt_`-prefixed. |
-| `BZDIUM_AGENT_BASE_URL` | `--mcp-stdio` | Override the auto-discovered `http://127.0.0.1:<port>`. |
+| `BZDIUM_AGENT_API_KEY` | `--mcp-stdio`, HTTP clients | The bearer token. Must be `bzd_agt_`-prefixed; control characters (CR/LF) are refused. |
+| `BZDIUM_AGENT_PORT` | `--mcp-stdio` | Override the auto-discovered port — e.g. to target one of several running copies. |
 
 ### Data directory
 
@@ -290,7 +290,7 @@ Every failure returns an actionable envelope. The `suggestion` field exists so a
 
 ## 9. Dry-run
 
-Every mutating tool accepts `dryRun: true`. A dry run runs **the same validators as the real call** and returns the projected effect without touching state. It is a genuine precondition check, not a mock: a preview that succeeds tells the agent the real call will pass validation.
+Mutating tools accept `dryRun: true` — with two deliberate exceptions: `export_config` and `import_config` (their side effects are a file write / a full config replacement, which cannot be previewed meaningfully, so they reject the flag). A dry run runs **the same validators as the real call** and returns the projected effect without touching state. It is a genuine precondition check, not a mock: a preview that succeeds tells the agent the real call will pass validation.
 
 ```bash
 curl -s -X POST "$BASE/tools/remove_service" \

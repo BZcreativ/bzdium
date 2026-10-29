@@ -477,8 +477,11 @@
 
   /* ----- Confirm ----- */
   var confirmHandler = null;
-  function openConfirm(message, onConfirm) {
+  // `okLabel` lets each caller name its action; the default matches the
+  // destructive origin of this dialog ("Remove").
+  function openConfirm(message, onConfirm, okLabel) {
     $("confirm-text").textContent = message;
+    $("confirm-ok").textContent = okLabel || "Remove";
     confirmHandler = onConfirm;
     openModal("confirm-modal");
   }
@@ -813,7 +816,8 @@
             $("agent-error").textContent = String(e);
             $("agent-error").classList.remove("hidden");
           });
-      }
+      },
+      "Create admin key"
     );
   });
 
@@ -846,7 +850,8 @@
           cmd("set_agent_admin_scope", { allow: true })
             .then(refreshAgentPanel)
             .catch(function () { refreshAgentPanel(); });
-        }
+        },
+        "Allow admin tools"
       );
     } else {
       // Revoking admin never needs confirmation: it strictly reduces power.
@@ -936,7 +941,8 @@
             toast("Configuration imported.");
           }
         }).catch(function () {});
-      }
+      },
+      "Import"
     );
   });
 
@@ -1036,6 +1042,16 @@
     // "open this link in your browser" hand-off from a service webview).
     tauri.event.listen("app-notice", function (e) {
       if (typeof e.payload === "string" && e.payload) toast(e.payload);
+    }).catch(function () {});
+    // The first agent API key is minted by the backend the moment Agent
+    // Access is switched on — displayed here exactly once, never again.
+    tauri.event.listen("agent-token-created", function (e) {
+      if (typeof e.payload === "string" && e.payload) {
+        agentTokenShown = e.payload;
+        $("agent-token-note").classList.remove("hidden");
+        renderAgentToken();
+        toast("Agent API key created — copy it now, it is shown only once.");
+      }
     }).catch(function () {});
     // Brand manifest first so the initial render can resolve brand icons.
     loadBrandManifest()

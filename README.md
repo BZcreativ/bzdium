@@ -89,7 +89,7 @@ Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can
 ```bash
 cd src-tauri
 cargo build --release        # -> target/release/bzdium (or bzdium.exe)
-cargo test                   # 32 tests incl. IPC/security contracts
+cargo test                   # 260+ tests incl. IPC/security contracts
 ```
 
 Build distribution packages:
@@ -108,7 +108,7 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 - **Portable copies** inherit the ACLs/permissions of wherever you put them. On a USB stick anyone holding the physical drive holds the profile folders — treat portable folders as sensitive.
 - **Config export** contains services + settings only — never sessions, cookies, or credentials.
 - App-written files contain no secrets: `services.json`/`settings.json` hold names, URLs, and toggles; nothing secret-shaped. Page titles are parsed to an unread count and discarded.
-- **Network:** bzdium itself makes no telemetry/update calls — the only network traffic is the web content you load. The IPC surface exposed to web pages is exactly one command (`report_title`, bound to the calling webview, badge counts capped), enforced by Tauri capabilities + a UI Content-Security-Policy.
+- **Network:** bzdium itself makes no telemetry/update calls — the only network traffic is the web content you load. The IPC surface exposed to web pages is exactly two commands (`report_title` and `report_probe`, both bound to the calling webview, badge counts capped), enforced by Tauri capabilities + a UI Content-Security-Policy.
 - Uploaded custom icons are validated by magic bytes (png/jpg/webp/svg ≤256 KB), stored locally, and rendered only in `<img>` contexts where SVG scripts cannot execute.
 - Developer mode (DevTools) is off by default and gated server-side.
 

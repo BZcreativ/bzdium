@@ -3,7 +3,7 @@ name = "bzdium"
 version = "0.2.11"
 description = "bzdium — a light multi-messenger (Rust/WebView2 port of the Ferdium concept)"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.98"
 
 [lib]
 name = "bzdium_lib"
