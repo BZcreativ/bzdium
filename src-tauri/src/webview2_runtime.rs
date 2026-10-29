@@ -41,6 +41,23 @@ fn search_roots() -> Vec<PathBuf> {
     roots
 }
 
+/// Directory name inside the bzdium data dir where a user can side-load a
+/// Microsoft "Fixed Version" runtime (`<dataDir>/webview2-runtimes/<version>/`).
+/// The Evergreen updater deletes superseded runtimes from its own roots —
+/// often within days — so holding a known-good build requires a place the
+/// updater never touches.
+pub const SIDECAR_DIR: &str = "webview2-runtimes";
+
+fn sidecar_root(data_dir: &Path) -> PathBuf {
+    data_dir.join(SIDECAR_DIR)
+}
+
+fn allowed_roots(data_dir: &Path) -> Vec<PathBuf> {
+    let mut roots = search_roots();
+    roots.push(sidecar_root(data_dir));
+    roots
+}
+
 /// A candidate folder is a runtime iff it contains msedgewebview2.exe. This
 /// is the base validation; anything that can be *persisted* or *applied*
 /// must additionally pass [`folder_is_allowed`].
@@ -48,23 +65,25 @@ pub fn folder_is_valid(folder: &Path) -> bool {
     folder.is_dir() && folder.join("msedgewebview2.exe").is_file()
 }
 
-/// True when `folder` lies under one of the Evergreen install roots. The
-/// pin reaches `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`, a folder the loader
-/// executes binaries from — so a value that arrived through the agent API
-/// or an imported config must never point outside the runtimes bzdium
-/// itself discovered. Pure path-prefix check; testable with synthetic roots.
+/// True when `folder` lies under one of the allowed roots (Evergreen install
+/// roots plus the bzdium sidecar dir). The pin reaches
+/// `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`, a folder the loader executes
+/// binaries from — so a value that arrived through the agent API or an
+/// imported config must never point outside the runtimes bzdium itself
+/// discovered. Pure path-prefix check; testable with synthetic roots.
 fn path_under_roots(folder: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| folder.starts_with(root))
 }
 
 /// Validation gate for values entering Settings or applied at startup:
-/// must be an existing runtime folder under a known install root.
-pub fn folder_is_allowed(folder: &str) -> bool {
+/// must be an existing runtime folder under a known install root or the
+/// data-dir sidecar root.
+pub fn folder_is_allowed(folder: &str, data_dir: &Path) -> bool {
     if !cfg!(windows) {
         return false;
     }
     let path = Path::new(folder);
-    folder_is_valid(path) && path_under_roots(path, &search_roots())
+    folder_is_valid(path) && path_under_roots(path, &allowed_roots(data_dir))
 }
 
 /// Version sort key: "155.0.4283.62" -> (155, 0, 4283, 62). Unparsable
@@ -76,14 +95,16 @@ fn version_key(version: &str) -> Vec<u64> {
         .collect()
 }
 
-/// Enumerates installed runtimes, newest first. Purely filesystem-based, so
-/// it is safe to call from any thread and needs no WebView2 interaction.
-pub fn list_runtimes() -> Vec<RuntimeInfo> {
+/// Enumerates installed runtimes, newest first: everything under the
+/// Evergreen roots plus anything side-loaded into
+/// `<dataDir>/webview2-runtimes/<version>/`. Purely filesystem-based, so it
+/// is safe to call from any thread and needs no WebView2 interaction.
+pub fn list_runtimes(data_dir: &Path) -> Vec<RuntimeInfo> {
     if !cfg!(windows) {
         return Vec::new();
     }
     let mut found: Vec<RuntimeInfo> = Vec::new();
-    for root in search_roots() {
+    for root in allowed_roots(data_dir) {
         let entries = match std::fs::read_dir(&root) {
             Ok(entries) => entries,
             Err(_) => continue,
@@ -110,11 +131,11 @@ pub fn list_runtimes() -> Vec<RuntimeInfo> {
 }
 
 /// Applies the pin for this process. Must run before the first webview is
-/// created. A folder outside the known Evergreen roots, or one that has
-/// vanished (e.g. removed by the updater), is refused — the process falls
-/// back to the system default instead of executing from an arbitrary path.
-pub fn apply_override(folder: &str) -> bool {
-    if !folder_is_allowed(folder) {
+/// created. A folder outside the allowed roots, or one that has vanished
+/// (e.g. an Evergreen cleanup), is refused — the process falls back to the
+/// system default instead of executing from an arbitrary path.
+pub fn apply_override(folder: &str, data_dir: &Path) -> bool {
+    if !folder_is_allowed(folder, data_dir) {
         return false;
     }
     // The loader only re-reads this per environment creation, and every
@@ -126,8 +147,11 @@ pub fn apply_override(folder: &str) -> bool {
 
 /// Settings panel: runtimes available to pin to, newest first.
 #[tauri::command]
-pub fn list_webview2_runtimes() -> Vec<RuntimeInfo> {
-    list_runtimes()
+pub fn list_webview2_runtimes(
+    state: tauri::State<'_, crate::state::SharedState>,
+) -> Result<Vec<RuntimeInfo>, String> {
+    let data_dir = state.lock().map_err(|e| e.to_string())?.data_dir.clone();
+    Ok(list_runtimes(&data_dir))
 }
 
 #[cfg(test)]
@@ -164,7 +188,8 @@ mod tests {
 
     #[test]
     fn apply_override_rejects_missing_folders() {
-        assert!(!apply_override("Z:\\definitely\\not\\here"));
+        let data_dir = std::env::temp_dir();
+        assert!(!apply_override("Z:\\definitely\\not\\here", &data_dir));
     }
 
     #[test]
@@ -174,5 +199,38 @@ mod tests {
         assert!(path_under_roots(Path::new("/rt/b/x"), &roots));
         assert!(!path_under_roots(Path::new("/elsewhere/155.0"), &roots));
         assert!(!path_under_roots(Path::new("/rt"), &roots), "the root itself is not a runtime");
+    }
+
+    #[test]
+    fn sidecar_runtimes_are_discovered_and_allowed() {
+        // A Fixed Version runtime extracted into <dataDir>/webview2-runtimes/
+        // must be listed by list_runtimes and accepted by folder_is_allowed —
+        // this is the supported way to hold a build the Evergreen updater
+        // would otherwise delete from its own roots.
+        let data_dir = std::env::temp_dir().join(format!(
+            "bzdium-wv2-sidecar-{}-{:x}",
+            std::process::id(),
+            line!()
+        ));
+        let runtime = data_dir.join(SIDECAR_DIR).join("155.0.4283.62");
+        std::fs::create_dir_all(&runtime).unwrap();
+        std::fs::write(runtime.join("msedgewebview2.exe"), b"").unwrap();
+
+        let listed = list_runtimes(&data_dir);
+        assert!(
+            listed.iter().any(|r| r.version == "155.0.4283.62"),
+            "sidecar runtime must appear in the Settings list"
+        );
+        assert!(folder_is_allowed(
+            &runtime.to_string_lossy(),
+            &data_dir
+        ));
+        // ...but a folder OUTSIDE the roots still is not, even with the exe.
+        let rogue = data_dir.join("rogue-rt");
+        std::fs::create_dir_all(&rogue).unwrap();
+        std::fs::write(rogue.join("msedgewebview2.exe"), b"").unwrap();
+        assert!(!folder_is_allowed(&rogue.to_string_lossy(), &data_dir));
+
+        std::fs::remove_dir_all(&data_dir).ok();
     }
 }

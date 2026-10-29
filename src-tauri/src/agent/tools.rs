@@ -270,10 +270,10 @@ fn h_patch_settings<'a>(ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result<
                 }
             };
             if let Some(f) = folder.as_deref() {
-                if !crate::webview2_runtime::folder_is_allowed(f) {
+                if !crate::webview2_runtime::folder_is_allowed(f, &ctx.data_dir) {
                     return Err(AgentError::invalid_parameter(
                         "webview2RuntimeFolder",
-                        format!("'{f}' is not an installed WebView2 runtime under a known install root."),
+                        format!("'{f}' is not an installed WebView2 runtime under a known install root or the data-dir sidecar root."),
                         "Use a path returned by the Settings 'WebView2 runtime' list; it takes effect on the next app start.",
                     ));
                 }

@@ -41,12 +41,19 @@ fn update_settings(
     settings: Settings,
 ) -> Result<AppState, String> {
     // A pinned WebView2 runtime must be a real runtime folder under a known
-    // Evergreen root; refuse to persist anything the startup path would
-    // silently ignore (see run()) — the loader executes from this folder.
+    // Evergreen root or the data-dir sidecar root; refuse to persist anything
+    // the startup path would silently ignore (see run()) — the loader
+    // executes from this folder.
     if let Some(folder) = settings.webview2_runtime_folder.as_deref() {
-        if !webview2_runtime::folder_is_allowed(folder) {
+        let data_dir = state
+            .lock()
+            .map_err(|e| e.to_string())?
+            .data_dir
+            .clone();
+        if !webview2_runtime::folder_is_allowed(folder, &data_dir) {
             return Err(format!(
-                "'{folder}' is not an installed WebView2 runtime folder (msedgewebview2.exe not found under a known install root)."
+                "'{folder}' is not a WebView2 runtime folder (msedgewebview2.exe not found under a known install root or {}/).",
+                webview2_runtime::SIDECAR_DIR
             ));
         }
     }
@@ -180,14 +187,14 @@ fn revoke_agent_tokens(state: State<'_, SharedState>) -> Result<usize, String> {
 
 pub fn run() {
     let data_dir = storage::resolve_data_dir();
-    let initial_state = StateInner::new(data_dir);
+    let initial_state = StateInner::new(data_dir.clone());
 
     // WebView2 runtime pin: must happen before the first webview exists,
     // i.e. before the Builder creates the main window. An invalid stored
     // folder (e.g. removed by the Evergreen updater) degrades to the system
     // runtime rather than failing startup.
     if let Some(folder) = initial_state.settings.webview2_runtime_folder.clone() {
-        if webview2_runtime::apply_override(&folder) {
+        if webview2_runtime::apply_override(&folder, &data_dir) {
             eprintln!("webview2: pinning runtime folder {folder}");
         } else {
             eprintln!("webview2: ignoring invalid runtime folder {folder:?}");
