@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-grok-save-key"
+description = "Enables the grok_save_key command without any pre-configured scope."
+commands.allow = ["grok_save_key"]
+
+[[permission]]
+identifier = "deny-grok-save-key"
+description = "Denies the grok_save_key command without any pre-configured scope."
+commands.deny = ["grok_save_key"]

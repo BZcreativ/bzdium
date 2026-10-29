@@ -31,6 +31,16 @@
     "allow-set-agent-admin-scope",
     "allow-mint-agent-token",
     "allow-revoke-agent-tokens",
-    "allow-list-webview2-runtimes"
+    "allow-list-webview2-runtimes",
+    "allow-open-url-external",
+    "allow-grok-key-status",
+    "allow-grok-save-key",
+    "allow-grok-delete-key",
+    "allow-grok-test-connection",
+    "allow-grok-send-message",
+    "allow-grok-cancel-request",
+    "allow-grok-list-conversations",
+    "allow-grok-save-conversation",
+    "allow-grok-clear-history"
   ]
 }

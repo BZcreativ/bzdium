@@ -64,10 +64,17 @@ winreg = "0.56"
 # already resolved. See rust-toolchain.toml for the compiler pin.
 # Win32_UI_WindowsAndMessaging is required by ShellExecuteW's own signature
 # (SHOW_WINDOW_CMD) and for the SW_SHOWNORMAL constant.
+# Win32_Networking_WinHttp + Win32_Security_Cryptography back the Grok
+# assistant (src/grok.rs): WinHTTP is the https transport to api.x.ai
+# (Schannel, streaming reads), crypt32's Crypt(P)rotectData stores the
+# xAI API key as a user-scoped DPAPI blob — deliberately no reqwest/rustls,
+# keeping the dependency tree unchanged.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Networking_WinHttp",
+    "Win32_Security_Cryptography",
 ] }
 
 [dev-dependencies]

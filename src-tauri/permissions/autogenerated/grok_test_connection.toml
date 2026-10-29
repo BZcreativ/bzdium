@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-grok-test-connection"
+description = "Enables the grok_test_connection command without any pre-configured scope."
+commands.allow = ["grok_test_connection"]
+
+[[permission]]
+identifier = "deny-grok-test-connection"
+description = "Denies the grok_test_connection command without any pre-configured scope."
+commands.deny = ["grok_test_connection"]

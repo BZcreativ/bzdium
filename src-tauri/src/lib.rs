@@ -1,6 +1,7 @@
 pub mod agent;
 mod autostart;
 mod badges;
+pub mod grok;
 mod hibernate;
 mod services;
 mod state;
@@ -239,6 +240,7 @@ pub fn run() {
             webviews::set_overlay_mode,
             webviews::open_devtools,
             webviews::open_service_external,
+            webviews::open_url_external,
             get_agent_status,
             set_agent_admin_scope,
             mint_agent_token,
@@ -246,6 +248,15 @@ pub fn run() {
             badges::report_title,
             watchdog::report_probe,
             webview2_runtime::list_webview2_runtimes,
+            grok::grok_key_status,
+            grok::grok_save_key,
+            grok::grok_delete_key,
+            grok::grok_test_connection,
+            grok::grok_send_message,
+            grok::grok_cancel_request,
+            grok::grok_list_conversations,
+            grok::grok_save_conversation,
+            grok::grok_clear_history,
         ])
         .setup(|app| {
             tray::setup_tray(app)?;

@@ -29,6 +29,7 @@
  "anthropic": "#191919",
  "googlegemini": "#8e75b2",
  "perplexity": "#1fb8cd",
+ "grok": "#000000",
  "notion": "#000000",
  "googlecalendar": "#4285f4",
  "googlekeep": "#ffbb00",

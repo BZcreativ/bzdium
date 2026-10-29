@@ -37,7 +37,12 @@ pub fn start_hibernation_task(app: AppHandle) {
             let idle: Vec<String> = inner
                 .services
                 .iter()
-                .filter(|s| s.enabled && !s.hibernated && active.as_deref() != Some(s.id.as_str()))
+                // The native Grok assistant holds no webview (nothing to
+                // free), so hibernation does not apply to it.
+                .filter(|s| {
+                    s.enabled && !s.hibernated && s.kind != crate::state::ServiceKind::GrokApi
+                        && active.as_deref() != Some(s.id.as_str())
+                })
                 .filter(|s| {
                     inner
                         .last_active

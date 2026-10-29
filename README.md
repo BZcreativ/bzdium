@@ -28,7 +28,8 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 ## Features
 
 - **Portable binary & native packages** — data lives in `bzdium-data/` next to the binary (falls back to `~/.local/share/bzdium` on Linux or `%APPDATA%\bzdium` on Windows for read-only installations)
-- **60 built-in services** (messaging, mail, social, AI, productivity) + custom URLs for anything self-hosted
+- **62 built-in services** (messaging, mail, social, AI, productivity) + custom URLs for anything self-hosted
+- **Grok, two ways** — "Grok" opens grok.com like any other service; "Grok API" is a native assistant that chats with xAI's Grok models over the official API with streaming replies, cancellation, local conversation history and a live model picker. The API key is stored encrypted with Windows DPAPI, never shown in full, and is billed by xAI separately from any Grok website subscription (see [docs/grok-integration.md](docs/grok-integration.md)). API mode requires Windows; website mode works everywhere.
 - **Homelab & self-hosted support** — option to trust invalid / self-signed TLS certificates with clear security disclaimers
 - **Persistent isolated sessions** — each service gets its own browser profile; logins survive restarts
 - **Unread badges** parsed from page titles (capped, spoof-resistant: a page can only ever report its own count)
@@ -107,8 +108,8 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 - **Installed copies** keep data in `~/.local/share/bzdium` (Linux) or `%APPDATA%\bzdium` (Windows), protected by standard OS user boundaries. Uninstalling removes the app binary while preserving your session data.
 - **Portable copies** inherit the ACLs/permissions of wherever you put them. On a USB stick anyone holding the physical drive holds the profile folders — treat portable folders as sensitive.
 - **Config export** contains services + settings only — never sessions, cookies, or credentials.
-- App-written files contain no secrets: `services.json`/`settings.json` hold names, URLs, and toggles; nothing secret-shaped. Page titles are parsed to an unread count and discarded.
-- **Network:** bzdium itself makes no telemetry/update calls — the only network traffic is the web content you load. The IPC surface exposed to web pages is exactly two commands (`report_title` and `report_probe`, both bound to the calling webview, badge counts capped), enforced by Tauri capabilities + a UI Content-Security-Policy.
+- App-written files contain no secrets: `services.json`/`settings.json` hold names, URLs, and toggles; nothing secret-shaped. Page titles are parsed to an unread count and discarded. The one credential bzdium stores on your behalf — the optional Grok API key — is encrypted with Windows DPAPI (user-scoped, additional entropy) and never rendered in full, logged, or exported.
+- **Network:** bzdium itself makes no telemetry/update calls — the only network traffic is the web content you load, plus the Grok assistant's own calls to `api.x.ai` when you use it (https, pinned host, redirects disabled). The IPC surface exposed to web pages is exactly two commands (`report_title` and `report_probe`, both bound to the calling webview, badge counts capped), enforced by Tauri capabilities + a UI Content-Security-Policy.
 - Uploaded custom icons are validated by magic bytes (png/jpg/webp/svg ≤256 KB), stored locally, and rendered only in `<img>` contexts where SVG scripts cannot execute.
 - Developer mode (DevTools) is off by default and gated server-side.
 

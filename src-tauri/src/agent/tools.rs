@@ -180,7 +180,10 @@ fn h_add_service<'a>(ctx: &'a AgentCtx, args: Value) -> BoxFuture<'a, Result<Val
         let icon_id = arg_opt_str(&args, "iconId");
         let ignore_tls = args.get("ignoreTlsErrors").and_then(Value::as_bool);
         let state = state_of(ctx);
-        let snap = crate::services::add_service(ctx.app.clone(), state, name, url, icon, icon_id, ignore_tls)
+        // The agent surface only creates ordinary web services; the native
+        // Grok assistant is added through the Add-Service panel (its key
+        // setup is an interactive flow).
+        let snap = crate::services::add_service(ctx.app.clone(), state, name, url, icon, icon_id, ignore_tls, None)
             .await
             .map_err(map_err)?;
         serde_json::to_value(snap)

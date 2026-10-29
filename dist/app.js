@@ -18,10 +18,12 @@
     services: [
       { id: "demo-1", name: "WhatsApp", url: "https://web.whatsapp.com", icon: "W", enabled: true, order: 0, hibernated: false, badgeCount: 3 },
       { id: "demo-2", name: "Telegram", url: "https://web.telegram.org", icon: "T", enabled: true, order: 1, hibernated: true, badgeCount: 0 },
-      { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 }
+      { id: "demo-3", name: "Discord", url: "https://discord.com/app", icon: "D", enabled: true, order: 2, hibernated: false, badgeCount: 12 },
+      { id: "demo-4", name: "Grok", url: "https://grok.com/", icon: "GR", iconId: "grok", kind: "web", enabled: true, order: 3, hibernated: false, badgeCount: 0 },
+      { id: "demo-5", name: "Grok API", url: "https://grok.com/", icon: "GA", iconId: "grok", kind: "grokApi", enabled: true, order: 4, hibernated: false, badgeCount: 0 }
     ],
     activeServiceId: "demo-1",
-    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, autoRecover: true, linkTarget: "browser", agentAccess: false, webview2RuntimeFolder: null },
+    settings: { hibernationMinutes: 30, minimizeToTray: true, startWithWindows: false, showUrlBar: true, darkUi: true, devMode: false, autoRecover: true, linkTarget: "browser", agentAccess: false, webview2RuntimeFolder: null, grokModel: null },
     totalBadgeCount: 15,
     dataDir: "demo"
   };
@@ -31,12 +33,44 @@
     { name: "Discord", url: "https://discord.com/app", icon: "D" },
     { name: "Slack", url: "https://app.slack.com", icon: "S" },
     { name: "Messenger", url: "https://www.messenger.com", icon: "M" },
-    { name: "Gmail", url: "https://mail.google.com", icon: "G" }
+    { name: "Gmail", url: "https://mail.google.com", icon: "G" },
+    { name: "Grok", url: "https://grok.com/", icon: "GR", iconId: "grok" },
+    { name: "Grok API", url: "https://grok.com/", icon: "GA", iconId: "grok", kind: "grokApi" }
   ];
+
+  // Preview-only conversation so the assistant surface renders in a browser.
+  var mockGrokConversations = [];
 
   function mockInvoke(name, args) {
     if (name === "get_recipes") return Promise.resolve(mockRecipes);
     if (name === "get_state") return Promise.resolve(mockState);
+    // Grok assistant, so the chat surface is inspectable in a plain browser.
+    if (name === "grok_key_status") return Promise.resolve({ configured: true, masked: "xai-••••demo", platformSupported: true });
+    if (name === "grok_test_connection") return Promise.resolve({ ok: true, error: null, models: ["grok-4.7", "grok-4.6", "grok-4.5"], defaultModel: "grok-4.7" });
+    if (name === "grok_list_conversations") return Promise.resolve(mockGrokConversations);
+    if (name === "grok_save_conversation") {
+      var conv = args.conversation;
+      var at = mockGrokConversations.findIndex(function (c) { return c.id === conv.id; });
+      if (at >= 0) mockGrokConversations[at] = conv; else mockGrokConversations.unshift(conv);
+      return Promise.resolve(null);
+    }
+    if (name === "grok_clear_history") { mockGrokConversations = []; return Promise.resolve(null); }
+    if (name === "grok_save_key") return Promise.resolve({ configured: true, masked: "xai-••••demo", platformSupported: true });
+    if (name === "grok_delete_key") return Promise.resolve({ configured: false, masked: null, platformSupported: true });
+    if (name === "grok_send_message") {
+      // Simulate a streamed answer through the same handlers the real
+      // backend events drive, so the preview exercises the UI path.
+      var rid = args.requestId;
+      setTimeout(function () {
+        window.__grokTest.chunk({ requestId: rid, delta: "Preview answer: " });
+        setTimeout(function () {
+          window.__grokTest.chunk({ requestId: rid, delta: args.messages[args.messages.length - 1].content });
+          window.__grokTest.done({ requestId: rid, model: args.model, usage: { promptTokens: 12, completionTokens: 34 } });
+        }, 300);
+      }, 200);
+      return Promise.resolve(null);
+    }
+    if (name === "open_url_external") return Promise.resolve(null);
     if (name === "export_config") return Promise.resolve(null);
     if (name === "import_config") return Promise.resolve(null);
     // Agent Access, so the panel is inspectable in a plain browser too.
@@ -262,8 +296,25 @@
     // Empty state.
     welcome.classList.toggle("hidden", (state.services || []).length !== 0);
 
+    // The native Grok assistant replaces the whole content area with the
+    // chat surface rendered by this webview (no service webview backs it).
+    var activeService = state.activeServiceId ? serviceById(state.activeServiceId) : null;
+    var grokActive = !!(activeService && activeService.kind === "grokApi");
+    document.body.classList.toggle("grok-active", grokActive);
+    // .hidden carries display:none !important, so visibility is driven by
+    // the class (not just the body.grok-active CSS rule).
+    $("grok-chat").classList.toggle("hidden", !grokActive);
+    if (grokActive) {
+      refreshGrokChat(activeService);
+      // Focus the composer only on the transition into the assistant —
+      // background state events must never steal focus.
+      if (!grokWasActive && document.hasFocus()) $("grok-input").focus();
+    }
+    grokWasActive = grokActive;
+
     refreshUrlBar();
   }
+  var grokWasActive = false;
 
   function buildServiceItem(service, activeServiceId) {
     var btn = document.createElement("button");
@@ -345,44 +396,76 @@
   function openContextMenu(service, x, y) {
     contextMenu.textContent = "";
 
-    addCtxItem("Reload", false, function () {
-      cmd("reload_service", { id: service.id }).catch(function () {});
-    });
-    addCtxItem("Back", false, function () {
-      cmd("navigate", { id: service.id, action: "back" }).catch(function () {});
-    });
-    addCtxItem("Forward", false, function () {
-      cmd("navigate", { id: service.id, action: "forward" }).catch(function () {});
-    });
-    addCtxItem("Home", false, function () {
-      cmd("navigate", { id: service.id, action: "home" }).catch(function () {});
-    });
-    addCtxItem("Open in browser", false, function () {
-      cmd("open_service_external", { id: service.id }).catch(function () {});
-    });
-    addCtxSep();
-    if (service.hibernated) {
-      addCtxItem("Wake", false, function () {
-        cmd("wake_service", { id: service.id }).catch(function () {});
+    if (service.kind === "grokApi") {
+      // The native assistant has no page: navigation/hibernation entries
+      // would be dead controls, so it gets its own menu instead.
+      addCtxItem("New chat", false, function () {
+        grokStartNewChat();
+        cmd("set_active_service", { id: service.id }).catch(function () {});
+      });
+      addCtxItem("Clear conversation history…", false, function () {
+        openConfirm(
+          "Delete ALL Grok conversation history stored in bzdium? This cannot be undone.",
+          function () { grokClearHistory(); }
+        );
+      });
+      addCtxItem("Open grok.com in browser", false, function () {
+        cmd("open_service_external", { id: service.id }).catch(function () {});
+      });
+      addCtxSep();
+      addCtxItem("Edit", false, function () { openEditModal(service); });
+      if (currentState && currentState.settings && currentState.settings.devMode) {
+        addCtxItem("Inspect UI (DevTools)", false, function () {
+          cmd("open_devtools", { id: null }).catch(function () {});
+        });
+      }
+      addCtxSep();
+      addCtxItem("Remove", true, function () {
+        openConfirm(
+          "Remove “" + service.name + "”? Its locally stored conversation history is deleted too.",
+          function () { cmd("remove_service", { id: service.id }).catch(function () {}); }
+        );
       });
     } else {
-      addCtxItem("Hibernate", false, function () {
-        cmd("hibernate_service", { id: service.id }).catch(function () {});
+      addCtxItem("Reload", false, function () {
+        cmd("reload_service", { id: service.id }).catch(function () {});
+      });
+      addCtxItem("Back", false, function () {
+        cmd("navigate", { id: service.id, action: "back" }).catch(function () {});
+      });
+      addCtxItem("Forward", false, function () {
+        cmd("navigate", { id: service.id, action: "forward" }).catch(function () {});
+      });
+      addCtxItem("Home", false, function () {
+        cmd("navigate", { id: service.id, action: "home" }).catch(function () {});
+      });
+      addCtxItem("Open in browser", false, function () {
+        cmd("open_service_external", { id: service.id }).catch(function () {});
+      });
+      addCtxSep();
+      if (service.hibernated) {
+        addCtxItem("Wake", false, function () {
+          cmd("wake_service", { id: service.id }).catch(function () {});
+        });
+      } else {
+        addCtxItem("Hibernate", false, function () {
+          cmd("hibernate_service", { id: service.id }).catch(function () {});
+        });
+      }
+      addCtxItem("Edit", false, function () { openEditModal(service); });
+      if (currentState && currentState.settings && currentState.settings.devMode) {
+        addCtxItem("Inspect page (DevTools)", false, function () {
+          cmd("open_devtools", { id: service.id }).catch(function () {});
+        });
+      }
+      addCtxSep();
+      addCtxItem("Remove", true, function () {
+        openConfirm(
+          "Remove “" + service.name + "”? Its saved session (login data) is deleted too.",
+          function () { cmd("remove_service", { id: service.id }).catch(function () {}); }
+        );
       });
     }
-    addCtxItem("Edit", false, function () { openEditModal(service); });
-    if (currentState && currentState.settings && currentState.settings.devMode) {
-      addCtxItem("Inspect page (DevTools)", false, function () {
-        cmd("open_devtools", { id: service.id }).catch(function () {});
-      });
-    }
-    addCtxSep();
-    addCtxItem("Remove", true, function () {
-      openConfirm(
-        "Remove “" + service.name + "”? Its saved session (login data) is deleted too.",
-        function () { cmd("remove_service", { id: service.id }).catch(function () {}); }
-      );
-    });
 
     contextMenu.classList.remove("hidden");
     // Clamp inside the window.
@@ -497,6 +580,18 @@
 
   /* ----- Add service ----- */
   var addIconTouched = false;
+  var addSelectedKind = "web";
+
+  /* The TLS checkbox and its warning only apply to embedded pages; the
+   * native assistant has neither, so both hide when its recipe is picked. */
+  function setTlsRowVisible(formPrefix, visible) {
+    var checkboxLabel = $(formPrefix + "-ignore-tls").closest("label");
+    checkboxLabel.classList.toggle("edit-grok-hidden", !visible);
+    var disclaimer = checkboxLabel.nextElementSibling;
+    if (disclaimer && disclaimer.classList.contains("field-disclaimer")) {
+      disclaimer.classList.toggle("edit-grok-hidden", !visible);
+    }
+  }
 
   function defaultIconFor(name) {
     var n = (name || "").trim();
@@ -546,10 +641,16 @@
       cell.addEventListener("click", function () {
         grid.querySelectorAll(".recipe-cell").forEach(function (c) { c.classList.remove("selected"); });
         cell.classList.add("selected");
+        addSelectedKind = recipe.kind || "web";
         $("add-name").value = recipe.name;
         $("add-url").value = recipe.url;
         $("add-icon").value = (recipe.icon || defaultIconFor(recipe.name)).toUpperCase();
         $("add-icon-id").value = recipe.iconId || "";
+        // The native assistant connects through the xAI API: its URL is
+        // pinned backend-side to the official site, so the field is inert.
+        var isApi = addSelectedKind === "grokApi";
+        $("add-url").disabled = isApi;
+        setTlsRowVisible("add", !isApi);
         addIconTouched = false;
       });
       grid.appendChild(cell);
@@ -560,7 +661,10 @@
     $("add-form").reset();
     $("add-ignore-tls").checked = false;
     $("add-error").classList.add("hidden");
+    $("add-url").disabled = false;
+    setTlsRowVisible("add", true);
     addIconTouched = false;
+    addSelectedKind = "web";
     renderRecipes(recipesCache || []);
     openModal("add-modal");
     loadRecipes();
@@ -589,13 +693,21 @@
     var icon = $("add-icon").value.trim() || defaultIconFor(name);
     var iconId = $("add-icon-id").value.trim() || null;
     var ignoreTlsErrors = $("add-ignore-tls").checked;
+    var isApi = addSelectedKind === "grokApi";
     var err = validateServiceForm(name, url);
     if (err) {
       $("add-error").textContent = err;
       $("add-error").classList.remove("hidden");
       return;
     }
-    cmd("add_service", { name: name, url: url, icon: icon, iconId: iconId, ignoreTlsErrors: ignoreTlsErrors })
+    cmd("add_service", {
+      name: name,
+      url: url,
+      icon: icon,
+      iconId: iconId,
+      ignoreTlsErrors: ignoreTlsErrors,
+      kind: isApi ? "grokApi" : null
+    })
       .then(function () { closeModal("add-modal"); })
       .catch(function () {});
   });
@@ -636,11 +748,16 @@
 
   function openEditModal(service) {
     editingId = service.id;
+    var isApi = service.kind === "grokApi";
     $("edit-name").value = service.name;
     $("edit-url").value = service.url;
     $("edit-icon").value = service.icon || defaultIconFor(service.name);
     $("edit-enabled").checked = service.enabled !== false;
     $("edit-ignore-tls").checked = !!service.ignoreTlsErrors;
+    // Web-only controls: the assistant has no page and no TLS choice.
+    $("edit-url").closest("label").classList.toggle("edit-grok-hidden", isApi);
+    setTlsRowVisible("edit", !isApi);
+    $("edit-url").disabled = isApi;
     $("edit-error").classList.add("hidden");
     refreshEditIconPreview();
     openModal("edit-modal");
@@ -650,8 +767,9 @@
   $("edit-form").addEventListener("submit", function (e) {
     e.preventDefault();
     if (!editingId) return;
+    var service = serviceFromState(editingId);
     var name = $("edit-name").value.trim();
-    var url = $("edit-url").value.trim();
+    var url = $("edit-url").value.trim() || (service ? service.url : "");
     var icon = $("edit-icon").value.trim() || defaultIconFor(name);
     var ignoreTlsErrors = $("edit-ignore-tls").checked;
     var err = validateServiceForm(name, url);
@@ -693,6 +811,7 @@
     agentTokenShown = null;
     renderAgentToken();
     refreshAgentPanel();
+    refreshGrokPanel();
     refreshSettingsFooter();
     openModal("settings-modal");
   }
@@ -909,7 +1028,8 @@
         autoRecover: $("set-autorecover").checked,
         linkTarget: $("set-link-bzdium").checked ? "bzdium" : "browser",
         agentAccess: $("set-agent-access").checked,
-        webview2RuntimeFolder: runtimeFolder
+        webview2RuntimeFolder: runtimeFolder,
+        grokModel: $("set-grok-model").value || null
       }
     }).then(function () {
       closeModal("settings-modal");
@@ -946,6 +1066,524 @@
     );
   });
 
+  /* ---------------- Grok assistant (native "Grok API" service) ----------------
+   * The backend (grok.rs) owns the API key and the https transport; this
+   * surface renders conversations and consumes grok-chunk / grok-done /
+   * grok-error events. The key never reaches this webview. */
+
+  var grok = {
+    conversations: [],     // newest first, as reported by the backend
+    currentId: null,       // null = new, not-yet-saved conversation
+    draft: [],             // messages of the unsaved conversation
+    streaming: false,
+    requestId: null,
+    lastRequest: null,     // { model, messages } of the latest send (Retry)
+    models: null,          // live model list from grok_test_connection
+    backendDefault: null,  // backend's recommended default model
+    keyConfigured: null,   // from grok_key_status
+    loaded: false          // one-time per-session data fetch done
+  };
+
+  function grokConv() {
+    for (var i = 0; i < grok.conversations.length; i++) {
+      if (grok.conversations[i].id === grok.currentId) return grok.conversations[i];
+    }
+    return null;
+  }
+
+  function grokMessages() {
+    var conv = grokConv();
+    return conv ? conv.messages : grok.draft;
+  }
+
+  function grokResetError() {
+    $("grok-error").classList.add("hidden");
+    $("grok-retry").classList.add("hidden");
+    $("grok-callout").classList.add("hidden");
+  }
+
+  function grokShowError(message, opts) {
+    $("grok-error-text").textContent = message;
+    $("grok-error").classList.remove("hidden");
+    $("grok-retry").classList.toggle("hidden", !(opts && opts.retryable));
+    $("grok-callout").classList.toggle("hidden", !(opts && opts.needKey));
+    if (opts && opts.needKey) $("grok-error").classList.add("hidden");
+  }
+
+  /* One-time-per-session fetch of conversations, key state and the live
+   * model list. A failed model fetch is not sticky: Test in Settings
+   * refreshes it. */
+  function ensureGrokData() {
+    if (grok.loaded || !hasTauri) return;
+    grok.loaded = true;
+    cmd("grok_list_conversations").then(function (list) {
+      grok.conversations = list || [];
+      renderGrokHeader();
+      renderGrokMessages();
+    }).catch(function () {});
+    cmd("grok_key_status").then(function (st) {
+      grok.keyConfigured = !!st.configured;
+      renderGrokMessages();
+    }).catch(function () {});
+    refreshGrokModels().catch(function () {});
+  }
+
+  function refreshGrokModels() {
+    return cmd("grok_test_connection").then(function (res) {
+      if (res && res.ok && res.models && res.models.length) {
+        grok.models = res.models;
+        grok.backendDefault = res.defaultModel || res.models[0];
+      } else if (res && res.error && res.error.kind !== "auth") {
+        toast(res.error.message || "Grok connection test failed.");
+      }
+      grok.keyConfigured = !(res && res.error && res.error.kind === "auth");
+      renderGrokHeader();
+      renderGrokMessages();
+      return res;
+    });
+  }
+
+  /* Default pick comes from the backend's `grok_test_connection` (flagship
+   * family first over whatever the API returned — never a hardcoded list);
+   * the user's saved choice in Settings wins over it. */
+  function grokDefaultModel() {
+    var configured = currentState && currentState.settings && currentState.settings.grokModel;
+    if (configured) return configured;
+    return grok.backendDefault || "";
+  }
+
+  function grokSelectedModel() {
+    var sel = $("grok-model");
+    return sel.value || grokDefaultModel();
+  }
+
+  function setGrokModel(model) {
+    if (!currentState) return;
+    var settings = JSON.parse(JSON.stringify(currentState.settings));
+    settings.grokModel = model || null;
+    cmd("update_settings", { settings: settings }).then(function (state) {
+      render(state);
+    }).catch(function () {});
+  }
+
+  function refreshGrokChat(activeService) {
+    ensureGrokData();
+    grokResetError();
+    $("grok-heading").textContent = activeService.name || "Grok";
+    var icon = $("grok-title-icon");
+    icon.textContent = "";
+    var slug = activeService.iconId && brandManifest && brandManifest[activeService.iconId];
+    if (slug) {
+      icon.className = "svc-icon svc-icon-brand";
+      icon.style.setProperty("--brand", brandManifest[activeService.iconId]);
+      var glyph = document.createElement("img");
+      glyph.src = "assets/icons/" + activeService.iconId + ".svg";
+      glyph.alt = "";
+      glyph.draggable = false;
+      icon.appendChild(glyph);
+    }
+    renderGrokHeader();
+    renderGrokMessages();
+  }
+
+  function renderGrokHeader() {
+    var modelSel = $("grok-model");
+    var selected = grokDefaultModel();
+    modelSel.textContent = "";
+    var models = grok.models;
+    if (models && models.length) {
+      models.forEach(function (id) {
+        var opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = id;
+        if (id === selected) opt.selected = true;
+        modelSel.appendChild(opt);
+      });
+      if (selected && !models.some(function (m) { return m === selected; })) {
+        var extra = document.createElement("option");
+        extra.value = selected;
+        extra.textContent = selected + " (not in current list)";
+        extra.selected = true;
+        modelSel.appendChild(extra);
+      }
+    } else {
+      var only = document.createElement("option");
+      only.value = selected || "";
+      only.textContent = selected || "Connect to load models";
+      modelSel.appendChild(only);
+    }
+
+    var hist = $("grok-history");
+    hist.textContent = "";
+    var newOpt = document.createElement("option");
+    newOpt.value = "";
+    newOpt.textContent = "New conversation";
+    hist.appendChild(newOpt);
+    grok.conversations.forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.title || "(untitled)";
+      if (c.id === grok.currentId) opt.selected = true;
+      hist.appendChild(opt);
+    });
+    if (!grok.currentId) newOpt.selected = true;
+  }
+
+  function grokMessageEl(msg, streaming) {
+    var el = document.createElement("div");
+    el.className = "grok-msg grok-msg-" + (msg.role === "user" ? "user" : "assistant");
+    if (streaming) el.classList.add("streaming");
+    el.textContent = msg.content;
+    if (msg.meta) {
+      var meta = document.createElement("span");
+      meta.className = "grok-msg-meta";
+      meta.textContent = msg.meta;
+      el.appendChild(meta);
+    }
+    return el;
+  }
+
+  function renderGrokMessages() {
+    var wrap = $("grok-messages");
+    wrap.textContent = "";
+    var msgs = grokMessages();
+
+    if (!msgs.length) {
+      var empty = document.createElement("div");
+      empty.className = "grok-empty";
+      var p = document.createElement("p");
+      p.textContent = grok.keyConfigured === false
+        ? "Connect the assistant with your xAI API key to start chatting. Grok API usage is billed by xAI separately from any Grok website subscription."
+        : "Send a message to talk to " + (grokSelectedModel() || "Grok") + ". Answers stream in as they are generated. Grok API usage is billed by xAI — it is separate from any Grok website subscription.";
+      empty.appendChild(p);
+      wrap.appendChild(empty);
+    }
+    msgs.forEach(function (msg, i) {
+      wrap.appendChild(grokMessageEl(msg, grok.streaming && i === msgs.length - 1 && msg.role === "assistant"));
+    });
+    wrap.scrollTop = wrap.scrollHeight;
+
+    var busy = grok.streaming;
+    $("grok-status").textContent = busy ? "Generating…" : "";
+    $("grok-status").classList.toggle("busy", busy);
+    $("grok-send").disabled = busy;
+    $("grok-cancel").classList.toggle("hidden", !busy);
+  }
+
+  function grokPersist() {
+    var msgs = grokMessages();
+    if (!msgs.length) return;
+    var id = grok.currentId || grokNewId();
+    var now = Math.floor(Date.now() / 1000);
+    var existing = grokConv();
+    var conv = {
+      id: id,
+      title: existing ? existing.title : String(msgs[0].content).slice(0, 60),
+      model: grokSelectedModel(),
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now,
+      messages: msgs
+    };
+    grok.currentId = id;
+    cmd("grok_save_conversation", { conversation: conv })
+      .then(function () {
+        var at = grok.conversations.findIndex(function (c) { return c.id === conv.id; });
+        if (at >= 0) {
+          // A newer save of the same conversation may already be listed —
+          // never let an older in-flight response regress it.
+          if (grok.conversations[at].updatedAt <= conv.updatedAt) grok.conversations[at] = conv;
+        } else {
+          grok.conversations.unshift(conv);
+        }
+        renderGrokHeader();
+      })
+      .catch(function () {});
+  }
+
+  function grokNewId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+
+  function grokSend() {
+    if (grok.streaming) return;
+    var input = $("grok-input");
+    var text = input.value.trim();
+    if (!text) return;
+    if (grok.keyConfigured === false) {
+      grokShowError("No API key configured. Add your xAI API key in Settings → Grok assistant, then retry.", { needKey: true });
+      return;
+    }
+    var model = grokSelectedModel();
+    if (!model) {
+      grokShowError("No model selected. Press “Test” in Settings → Grok assistant to load the model list.", {});
+      return;
+    }
+    input.value = "";
+    grokMessages().push({ role: "user", content: text });
+    grokPersist();
+    grokRequest(model, grokMessages().slice());
+    renderGrokMessages();
+  }
+
+  function grokRequest(model, messages) {
+    grok.streaming = true;
+    grok.requestId = grokNewId();
+    grok.lastRequest = { model: model, messages: messages };
+    renderGrokMessages();
+    cmd("grok_send_message", { requestId: grok.requestId, model: model, messages: messages })
+      .catch(function (err) {
+        // The command itself only fails on malformed calls; real provider
+        // failures arrive as grok-error events.
+        grokHandleError({
+          requestId: grok.requestId,
+          kind: "unknown",
+          message: typeof err === "string" ? err : "Could not start the request.",
+          retryable: false
+        });
+      });
+  }
+
+  function grokHandleChunk(payload) {
+    if (!payload || payload.requestId !== grok.requestId || !payload.delta) return;
+    var msgs = grokMessages();
+    var last = msgs[msgs.length - 1];
+    if (!last || last.role !== "assistant") {
+      msgs.push({ role: "assistant", content: payload.delta });
+    } else {
+      last.content += payload.delta;
+    }
+    // Cheap in-place update: rewrite the last bubble's text, keep scroll.
+    var wrap = $("grok-messages");
+    var bubble = wrap.querySelector(".grok-msg-assistant:last-child");
+    if (bubble && !bubble.classList.contains("streaming")) bubble.classList.add("streaming");
+    if (bubble) {
+      bubble.textContent = msgs[msgs.length - 1].content;
+      wrap.scrollTop = wrap.scrollHeight;
+    } else {
+      renderGrokMessages();
+    }
+  }
+
+  function grokHandleDone(payload) {
+    if (!payload || payload.requestId !== grok.requestId) return;
+    grok.streaming = false;
+    grok.requestId = null;
+    var msgs = grokMessages();
+    var last = msgs[msgs.length - 1];
+    if (last && last.role === "assistant") {
+      var meta = payload.model ? payload.model : "";
+      if (payload.usage && payload.usage.completionTokens) {
+        meta += (meta ? " · " : "") + payload.usage.completionTokens + " tokens";
+      }
+      if (meta) last.meta = meta;
+    }
+    grokPersist();
+    renderGrokMessages();
+  }
+
+  function grokHandleError(payload) {
+    if (!payload || payload.requestId !== grok.requestId) return;
+    grok.streaming = false;
+    grok.requestId = null;
+    // Drop an empty assistant placeholder so no hollow bubble lingers.
+    var msgs = grokMessages();
+    var last = msgs[msgs.length - 1];
+    if (last && last.role === "assistant" && !last.content) msgs.pop();
+    // Permanent failures (bad key, no credits, retired model) must not
+    // leave a Retry path that can only fail the same way again.
+    var permanent = payload.kind === "auth" || payload.kind === "credits" || payload.kind === "model";
+    if (permanent) grok.lastRequest = null;
+    grokShowError(payload.message || "Something went wrong talking to the Grok API.", {
+      retryable: !!payload.retryable && !!grok.lastRequest
+    });
+    renderGrokMessages();
+  }
+
+  function grokStartNewChat() {
+    grok.currentId = null;
+    grok.draft = [];
+    grokResetError();
+    renderGrokHeader();
+    renderGrokMessages();
+    $("grok-input").focus();
+  }
+
+  function grokClearHistory() {
+    cmd("grok_clear_history").then(function () {
+      grok.conversations = [];
+      grok.currentId = null;
+      grok.draft = [];
+      renderGrokHeader();
+      renderGrokMessages();
+      toast("Grok conversation history deleted.");
+    }).catch(function () {});
+  }
+
+  $("grok-composer").addEventListener("submit", function (e) {
+    e.preventDefault();
+    grokSend();
+  });
+  $("grok-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      grokSend();
+    }
+  });
+  $("grok-cancel").addEventListener("click", function () {
+    if (grok.requestId) cmd("grok_cancel_request", { requestId: grok.requestId }).catch(function () {});
+  });
+  $("grok-new-chat").addEventListener("click", grokStartNewChat);
+  $("grok-history").addEventListener("change", function () {
+    grok.currentId = this.value || null;
+    grok.draft = [];
+    grokResetError();
+    renderGrokMessages();
+    $("grok-input").focus();
+  });
+  $("grok-model").addEventListener("change", function () {
+    setGrokModel(this.value || null);
+  });
+  $("grok-retry").addEventListener("click", function () {
+    grokResetError();
+    if (grok.lastRequest && !grok.streaming) {
+      grokRequest(grok.lastRequest.model, grok.lastRequest.messages);
+    }
+  });
+  $("grok-dismiss").addEventListener("click", grokResetError);
+  $("grok-callout-configure").addEventListener("click", function () {
+    openSettingsModal();
+  });
+  $("grok-callout-console").addEventListener("click", function () {
+    cmd("open_url_external", { url: "https://console.x.ai/" }).catch(function () {});
+  });
+
+  /* ----- Settings → Grok assistant panel ----- */
+
+  function renderGrokKeyState(status) {
+    var el = $("grok-key-state");
+    if (status && status.configured) {
+      el.textContent = status.masked || "Configured";
+    } else {
+      el.textContent = status && status.platformSupported === false
+        ? "Not supported on this platform"
+        : "Not configured";
+    }
+    $("grok-key-remove").disabled = !(status && status.configured);
+  }
+
+  function fillGrokModelSelects() {
+    var sel = $("set-grok-model");
+    var current = (currentState && currentState.settings && currentState.settings.grokModel) || grokDefaultModel();
+    sel.textContent = "";
+    var models = (grok.models && grok.models.length) ? grok.models : (current ? [current] : []);
+    if (!models.length) {
+      var none = document.createElement("option");
+      none.value = "";
+      none.textContent = "Press Test to load models";
+      sel.appendChild(none);
+      return;
+    }
+    models.forEach(function (id) {
+      var opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = id;
+      if (id === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (current && !models.some(function (m) { return m === current; })) {
+      var extra = document.createElement("option");
+      extra.value = current;
+      extra.textContent = current + " (not in current list)";
+      extra.selected = true;
+      sel.appendChild(extra);
+    }
+  }
+
+  function refreshGrokPanel() {
+    cmd("grok_key_status").then(renderGrokKeyState).catch(function () {});
+    $("grok-key-input").value = "";
+    $("grok-connection").textContent = grok.models ? grok.models.length + " model(s) loaded" : "—";
+    fillGrokModelSelects();
+  }
+
+  $("grok-key-save").addEventListener("click", function () {
+    var key = $("grok-key-input").value;
+    if (!key.trim()) {
+      var errEl = $("grok-error");
+      errEl.textContent = "Paste an API key first (it starts with “xai-”).";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    cmd("grok_save_key", { key: key }).then(function (status) {
+      $("grok-key-input").value = "";
+      renderGrokKeyState(status);
+      var errEl = $("grok-error");
+      errEl.classList.add("hidden");
+      toast("API key saved — stored encrypted, never shown in full again.");
+      grokTestConnection();
+    }).catch(function (e) {
+      var errEl = $("grok-error");
+      errEl.textContent = typeof e === "string" ? e : "Could not save the key.";
+      errEl.classList.remove("hidden");
+    });
+  });
+
+  $("grok-key-remove").addEventListener("click", function () {
+    openConfirm(
+      "Remove the stored xAI API key from this device? Existing conversations stay, but new messages need a key again.",
+      function () {
+        cmd("grok_delete_key").then(function (status) {
+          renderGrokKeyState(status);
+          grok.models = null;
+          grok.keyConfigured = false;
+          $("grok-connection").textContent = "—";
+          fillGrokModelSelects();
+          toast("API key removed.");
+        }).catch(function () {});
+      },
+      "Remove key"
+    );
+  });
+
+  function grokTestConnection() {
+    $("grok-connection").textContent = "Testing…";
+    refreshGrokModels().then(function (res) {
+      if (res && res.ok) {
+        $("grok-connection").textContent = "OK — " + res.models.length + " model(s) available";
+        var errEl = $("grok-error");
+        errEl.classList.add("hidden");
+      } else if (res && res.error) {
+        $("grok-connection").textContent = "Failed";
+        var errEl = $("grok-error");
+        errEl.textContent = res.error.message || "Connection test failed.";
+        errEl.classList.remove("hidden");
+      }
+      fillGrokModelSelects();
+    }).catch(function () {
+      $("grok-connection").textContent = "Failed";
+    });
+  }
+  $("grok-test-btn").addEventListener("click", grokTestConnection);
+
+  function openExternal(url) {
+    cmd("open_url_external", { url: url }).catch(function () {});
+  }
+  $("grok-open-console").addEventListener("click", function () { openExternal("https://console.x.ai/"); });
+  $("grok-open-docs").addEventListener("click", function () { openExternal("https://docs.x.ai/overview"); });
+  $("grok-open-site").addEventListener("click", function () { openExternal("https://grok.com/"); });
+
+  $("grok-clear-history").addEventListener("click", function () {
+    openConfirm(
+      "Delete ALL Grok conversation history stored in bzdium? This cannot be undone.",
+      function () { grokClearHistory(); },
+      "Delete"
+    );
+  });
+
   /* ---------------- Global listeners ---------------- */
 
   document.addEventListener("mousedown", function (e) {
@@ -974,7 +1612,11 @@
 
   function refreshUrlBar() {
     if (!currentState) return;
-    var show = !!(currentState.settings && currentState.settings.showUrlBar);
+    var active = currentState.activeServiceId ? serviceById(currentState.activeServiceId) : null;
+    // The assistant has no page to address — the bar is hidden while it is
+    // the active service, exactly like the no-url-bar setting.
+    var grokActive = !!(active && active.kind === "grokApi");
+    var show = !!(currentState.settings && currentState.settings.showUrlBar) && !grokActive;
     document.body.classList.toggle("no-url-bar", !show);
     var activeId = currentState.activeServiceId;
     var enabled = !!activeId;
@@ -1053,6 +1695,13 @@
         toast("Agent API key created — copy it now, it is shown only once.");
       }
     }).catch(function () {});
+    // Grok assistant streams arrive as events from the Rust worker thread.
+    tauri.event.listen("grok-chunk", function (e) { grokHandleChunk(e.payload); })
+      .catch(function () {});
+    tauri.event.listen("grok-done", function (e) { grokHandleDone(e.payload); })
+      .catch(function () {});
+    tauri.event.listen("grok-error", function (e) { grokHandleError(e.payload); })
+      .catch(function () {});
     // Brand manifest first so the initial render can resolve brand icons.
     loadBrandManifest()
       .then(function () { return cmd("get_state"); })
@@ -1060,7 +1709,15 @@
       .catch(function () {});
   } else {
     // Plain-browser preview: render demo state, no backend calls.
-    brandManifest = {};
+    brandManifest = { grok: "#000000" };
     render(mockState);
+    // Preview-only test hooks so the assistant surface can be exercised
+    // (mockInvoke routes simulated streams through the same handlers).
+    window.__grokTest = {
+      chunk: grokHandleChunk,
+      done: grokHandleDone,
+      error: grokHandleError,
+      state: grok
+    };
   }
 })();

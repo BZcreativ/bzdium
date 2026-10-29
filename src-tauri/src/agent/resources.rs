@@ -538,6 +538,7 @@ mod tests {
             hibernated: false,
             badge_count: badges,
             ignore_tls_errors: false,
+            kind: crate::state::ServiceKind::Web,
         }
     }
 
@@ -823,8 +824,8 @@ mod tests {
     fn recipes_json_lists_the_full_catalog() {
         let v = recipes_json();
         let rows = v["recipes"].as_array().unwrap();
-        assert_eq!(rows.len(), 60, "the built-in catalog is 60 recipes");
-        assert_eq!(v["count"], 60);
+        assert_eq!(rows.len(), 62, "the built-in catalog is 62 recipes (61 web + Grok API)");
+        assert_eq!(v["count"], 62);
         for row in rows {
             let url = row["url"].as_str().unwrap();
             assert!(url.starts_with("https://"), "{url} must be https");

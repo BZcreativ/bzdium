@@ -272,6 +272,17 @@ pub fn open_service_external(state: State<'_, SharedState>, id: String) -> Resul
     open_in_default_browser(&url)
 }
 
+/// Opens an explicit https URL in the OS default browser (Settings links to
+/// the provider console/docs/website). Same scheme + control-byte guard as
+/// page-initiated opens.
+#[tauri::command]
+pub fn open_url_external(url: String) -> Result<(), String> {
+    if !external_open_allowed(&url) {
+        return Err("only http(s) pages can be opened in the browser".to_string());
+    }
+    open_in_default_browser(&url)
+}
+
 fn hosts_match(a: &str, b: &str) -> bool {
     match (
         tauri::Url::parse(a.trim()),
@@ -549,6 +560,8 @@ mod tests {
 /// and NEVER holds it across webview operations — webview creation runs on
 /// the event loop with a nested message pump, and a sync command processed
 /// inside that pump while the lock is held would deadlock the whole app.
+/// The native Grok assistant has no webview: activating it hides every
+/// service webview so the UI webview's chat surface shows through.
 pub fn activate(app: &AppHandle, state: &SharedState, id: &str) -> Result<(), String> {
     let (service, data_dir) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
@@ -570,6 +583,9 @@ pub fn activate(app: &AppHandle, state: &SharedState, id: &str) -> Result<(), St
         inner.active_service_id = Some(id.to_string());
         (service, data_dir)
     };
+    if service.kind == crate::state::ServiceKind::GrokApi {
+        return show_only(app, None);
+    }
     create_service_webview(app, &service, &data_dir, true)?;
     show_only(app, Some(id))
 }
@@ -648,8 +664,11 @@ pub async fn reload_service(
     // command, then delegate to the shared hard-reload path.
     {
         let inner = state.lock().map_err(|e| e.to_string())?;
-        if inner.service(&id).is_none() {
-            return Err(format!("unknown service id {id}"));
+        let service = inner
+            .service(&id)
+            .ok_or_else(|| format!("unknown service id {id}"))?;
+        if service.kind == crate::state::ServiceKind::GrokApi {
+            return Err(format!("{} is the native assistant — there is no page to reload", service.name));
         }
     }
     schedule_hard_reload(&app, &id)
@@ -720,6 +739,9 @@ pub async fn navigate(
             .ok_or_else(|| format!("unknown service id {id}"))?;
         if !service.enabled {
             return Err(format!("{} is disabled — enable it in Edit", service.name));
+        }
+        if service.kind == crate::state::ServiceKind::GrokApi {
+            return Err(format!("{} is the native assistant — it has no web page to navigate", service.name));
         }
         let data_dir = inner.data_dir.clone();
         if service.hibernated {
@@ -801,6 +823,9 @@ pub async fn navigate_url(
             .service(&id)
             .cloned()
             .ok_or_else(|| format!("unknown service id {id}"))?;
+        if service.kind == crate::state::ServiceKind::GrokApi {
+            return Err(format!("{} is the native assistant — use the chat box to talk to it", service.name));
+        }
         let data_dir = inner.data_dir.clone();
         inner.touch(&id);
         let is_active = inner.active_service_id.as_deref() == Some(id.as_str());
@@ -850,6 +875,13 @@ pub async fn hibernate_service(
         if inner.service(&id).is_none() {
             return Err(format!("unknown service id {id}"));
         }
+        let is_grok_api = inner
+            .service(&id)
+            .map(|s| s.kind == crate::state::ServiceKind::GrokApi)
+            .unwrap_or(false);
+        if is_grok_api {
+            return Err("The native assistant holds no page in memory — hibernation does not apply".to_string());
+        }
         if let Some(s) = inner.service_mut(&id) {
             s.hibernated = true;
             // The unread count is deliberately KEPT, matching the idle
@@ -892,6 +924,12 @@ pub async fn wake_service(
         let snapshot = inner.snapshot();
         (service, data_dir, is_active, snapshot)
     };
+    // The assistant has no webview; "waking" it just activates the chat.
+    if service.kind == crate::state::ServiceKind::GrokApi {
+        activate(&app, &state, &id)?;
+        emit_snapshot(&app, &snapshot);
+        return Ok(snapshot);
+    }
     if let Err(e) = create_service_webview(&app, &service, &data_dir, is_active) {
         eprintln!("wake_service: webview create failed: {e}");
         emit_snapshot(&app, &snapshot);

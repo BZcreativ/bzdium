@@ -37,6 +37,43 @@
     <button id="url-go" class="ghost-btn" title="Go" aria-label="Go to URL">→</button>
   </div>
 
+  <!-- Native Grok assistant (the "Grok API" service): unlike every other
+       service it has NO webview — this UI webview renders the chat while the
+       assistant service is active, fed by grok.rs over the xAI API. -->
+  <section id="grok-chat" class="hidden" aria-label="Grok assistant">
+    <header id="grok-header">
+      <span id="grok-title-icon" class="svc-icon svc-icon-brand" aria-hidden="true"></span>
+      <h2 id="grok-heading">Grok</h2>
+      <label class="grok-model-label" for="grok-model">Model</label>
+      <select id="grok-model" aria-label="Grok model"></select>
+      <span id="grok-status" role="status" aria-live="polite"></span>
+      <span class="grok-header-gap"></span>
+      <label class="grok-model-label" for="grok-history">Conversation</label>
+      <select id="grok-history" aria-label="Conversation history"></select>
+      <button id="grok-new-chat" class="ghost-btn" type="button">New chat</button>
+    </header>
+    <div id="grok-messages" role="log" aria-live="polite"></div>
+    <div id="grok-callout" class="hidden">
+      <p id="grok-callout-text"></p>
+      <div class="grok-callout-actions">
+        <button id="grok-callout-configure" class="primary-btn" type="button">Configure API key…</button>
+        <button id="grok-callout-console" class="ghost-btn" type="button">console.x.ai…</button>
+      </div>
+    </div>
+    <div id="grok-error" class="hidden" role="alert">
+      <p id="grok-error-text"></p>
+      <div class="grok-error-actions">
+        <button id="grok-retry" class="ghost-btn hidden" type="button">Retry</button>
+        <button id="grok-dismiss" class="ghost-btn" type="button">Dismiss</button>
+      </div>
+    </div>
+    <form id="grok-composer">
+      <textarea id="grok-input" rows="2" placeholder="Message Grok…" aria-label="Message"></textarea>
+      <button id="grok-send" class="primary-btn" type="submit">Send</button>
+      <button id="grok-cancel" class="ghost-btn hidden" type="button">Cancel</button>
+    </form>
+  </section>
+
   <!-- Empty-state welcome panel (overlays the webview area only when there are no services) -->
   <div id="welcome" class="hidden">
     <div class="welcome-card">
@@ -187,6 +224,46 @@
             separately, and only while this box is ticked.
           </p>
           <p class="form-error hidden" id="agent-error"></p>
+        </div>
+
+        <!-- Grok assistant (xAI API): credentials, connection, model.
+             Mode A — the plain "Grok" website entry — needs none of this;
+             this panel configures the native "Grok API" assistant only. -->
+        <div id="grok-panel" class="agent-panel">
+          <p class="agent-hint">
+            The <strong>Grok API</strong> service talks to xAI's API with your
+            own key from console.x.ai. API use is billed by xAI separately —
+            a Grok website or X subscription does not include API credits.
+            The key is stored encrypted with Windows DPAPI, is never shown in
+            full again, and is not part of exported configuration files.
+          </p>
+          <p class="agent-row">
+            <span class="agent-label">API key</span>
+            <code id="grok-key-state">Not configured</code>
+          </p>
+          <p class="grok-key-row">
+            <input id="grok-key-input" type="password" placeholder="Paste key (starts with xai-)"
+                   autocomplete="off" spellcheck="false" aria-label="New xAI API key">
+            <button type="button" id="grok-key-save" class="ghost-btn agent-mini">Save key</button>
+            <button type="button" id="grok-key-remove" class="ghost-btn agent-mini">Remove key</button>
+          </p>
+          <p class="agent-row">
+            <span class="agent-label">Connection</span>
+            <code id="grok-connection">—</code>
+            <button type="button" id="grok-test-btn" class="ghost-btn agent-mini">Test</button>
+          </p>
+          <label id="grok-model-row">
+            Default model
+            <select id="set-grok-model"></select>
+            <span class="settings-hint">Loaded live from the API when you press Test — used for new conversations.</span>
+          </label>
+          <div class="config-actions agent-actions">
+            <button type="button" id="grok-open-console" class="ghost-btn">console.x.ai…</button>
+            <button type="button" id="grok-open-docs" class="ghost-btn">API docs…</button>
+            <button type="button" id="grok-open-site" class="ghost-btn">grok.com…</button>
+            <button type="button" id="grok-clear-history" class="ghost-btn">Delete chat history…</button>
+          </div>
+          <p class="form-error hidden" id="grok-error"></p>
         </div>
 
         <p class="form-error hidden" id="settings-error"></p>

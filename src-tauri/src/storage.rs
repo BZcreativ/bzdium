@@ -229,12 +229,15 @@ mod tests {
             hibernated: true,
             badge_count: 4,
             ignore_tls_errors: true,
+            kind: crate::state::ServiceKind::Web,
         };
         let json = serde_json::to_string(&service).unwrap();
         assert!(json.contains("\"badgeCount\":4"));
         assert!(json.contains("\"hibernated\":true"));
         assert!(json.contains("\"iconId\":\"whatsapp\""));
         assert!(json.contains("\"ignoreTlsErrors\":true"));
+        // Web is the default: it is skipped on the wire entirely.
+        assert!(!json.contains("\"kind\""));
         let back: Service = serde_json::from_str(&json).unwrap();
         assert_eq!(service, back);
 
@@ -246,6 +249,15 @@ mod tests {
         assert_eq!(parsed.icon_id, None);
         assert_eq!(parsed.custom_icon, None);
         assert!(!parsed.ignore_tls_errors);
+        assert_eq!(parsed.kind, crate::state::ServiceKind::Web);
+
+        // The native assistant kind round-trips and is spelled camelCase.
+        let mut grok = service.clone();
+        grok.kind = crate::state::ServiceKind::GrokApi;
+        let json = serde_json::to_string(&grok).unwrap();
+        assert!(json.contains("\"kind\":\"grokApi\""));
+        let back: Service = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.kind, crate::state::ServiceKind::GrokApi);
     }
 
     #[test]

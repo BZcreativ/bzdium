@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-grok-list-conversations"
+description = "Enables the grok_list_conversations command without any pre-configured scope."
+commands.allow = ["grok_list_conversations"]
+
+[[permission]]
+identifier = "deny-grok-list-conversations"
+description = "Denies the grok_list_conversations command without any pre-configured scope."
+commands.deny = ["grok_list_conversations"]

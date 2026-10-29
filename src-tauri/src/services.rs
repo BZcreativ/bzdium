@@ -16,7 +16,19 @@ pub struct Recipe {
     /// Brand icon slug (dist/assets/icons/<slug>.svg); null -> monogram.
     #[serde(rename = "iconId")]
     pub icon_id: Option<String>,
+    /// What adding this recipe creates: Web (default, an embedded page) or
+    /// GrokApi (the native xAI-API assistant). Absent on the wire = Web.
+    #[serde(rename = "kind", skip_serializing_if = "crate::state::ServiceKind::is_web")]
+    pub kind: crate::state::ServiceKind,
 }
+
+// Grok (xAI). Mode A ("Grok") is the official website in an embedded
+// webview; Mode B ("Grok API") is the native assistant over the xAI API —
+// both point at grok.com so "Open in browser" always reaches the official
+// site. Kept as separate catalog entries so the website shortcut and the
+// API-powered assistant stay clearly distinct in the UI (they are billed
+// and authenticated completely differently).
+pub const GROK_URL: &str = "https://grok.com/";
 
 // ---------------------------------------------------------------------------
 // Custom service icons
@@ -234,12 +246,13 @@ pub fn initials(name: &str) -> String {
     picked.into_iter().collect()
 }
 
-/// Built-in recipe catalog (normative list, spec section 6): the popular
-/// slice of Ferdium's recipe store that works as a plain web client
-/// (per-service JS hacks are deliberately not ported). Third tuple element:
+/// The plain-webview catalog (Mode A entries). `recipes()` layers the one
+/// native-API entry on top of this. Catalog basis: the popular slice of
+/// Ferdium's recipe store that works as a plain web client (per-service JS
+/// hacks are deliberately not ported; spec section 6). Third tuple element:
 /// brand icon slug ("" = none bundled -> monogram fallback). Slugs reference
 /// dist/assets/icons/<slug>.svg (Simple Icons, CC0).
-pub fn recipes() -> Vec<Recipe> {
+fn recipes_web() -> Vec<Recipe> {
     [
         // messaging
         ("WhatsApp", "https://web.whatsapp.com", "whatsapp"),
@@ -290,6 +303,7 @@ pub fn recipes() -> Vec<Recipe> {
         ("Gemini", "https://gemini.google.com", "googlegemini"),
         ("Copilot", "https://copilot.microsoft.com", ""),
         ("Perplexity", "https://www.perplexity.ai", "perplexity"),
+        ("Grok", "https://grok.com/", "grok"),
         // productivity
         ("Notion", "https://www.notion.so", "notion"),
         ("Google Calendar", "https://calendar.google.com", "googlecalendar"),
@@ -313,8 +327,33 @@ pub fn recipes() -> Vec<Recipe> {
         url: url.to_string(),
         icon: initials(name),
         icon_id: if slug.is_empty() { None } else { Some(slug.to_string()) },
+        kind: crate::state::ServiceKind::Web,
     })
     .collect()
+}
+
+/// Full Add-Service catalog: the web catalog plus the native Grok API
+/// assistant right after the Grok website entry, so the two integration
+/// modes are visible (and choosable) side by side while staying clearly
+/// distinct.
+pub fn recipes() -> Vec<Recipe> {
+    let mut list = recipes_web();
+    let at = list
+        .iter()
+        .position(|r| r.name == "Grok")
+        .map(|i| i + 1)
+        .unwrap_or(list.len());
+    list.insert(
+        at,
+        Recipe {
+            name: "Grok API".to_string(),
+            url: GROK_URL.to_string(),
+            icon: initials("Grok API"),
+            icon_id: Some("grok".to_string()),
+            kind: crate::state::ServiceKind::GrokApi,
+        },
+    );
+    list
 }
 
 /// Whether disabling TLS verification is acceptable for this URL
@@ -386,6 +425,7 @@ pub fn brand_slug_for_url(raw: &str) -> Option<String> {
         "claude.ai" => "anthropic",
         "gemini.google.com" => "googlegemini",
         "www.perplexity.ai" | "perplexity.ai" => "perplexity",
+        "grok.com" => "grok",
         // productivity
         "notion.so" | "www.notion.so" => "notion",
         "calendar.google.com" => "googlecalendar",
@@ -434,8 +474,17 @@ pub async fn add_service(
     icon: String,
     icon_id: Option<String>,
     ignore_tls_errors: Option<bool>,
+    kind: Option<crate::state::ServiceKind>,
 ) -> Result<AppState, String> {
-    let url = validate_https_url(&url)?;
+    let kind = kind.unwrap_or(crate::state::ServiceKind::Web);
+    // The Grok API assistant never loads a page, so its URL is only the
+    // "open the official website" target — pin it to the official host
+    // rather than trusting whatever the form carried.
+    let url = if kind == crate::state::ServiceKind::GrokApi {
+        GROK_URL.to_string()
+    } else {
+        validate_https_url(&url)?
+    };
     if ignore_tls_errors.unwrap_or(false) && !tls_bypass_allowed_for_url(&url) {
         return Err(
             "TLS verification can only be disabled for self-hosted services, not for a built-in public service — doing so would expose all of its traffic to interception.".to_string(),
@@ -463,13 +512,15 @@ pub async fn add_service(
         custom_icon: None,
         hibernated: false,
         badge_count: 0,
-        ignore_tls_errors: ignore_tls_errors.unwrap_or(false),
+        ignore_tls_errors: false,
+        kind,
     };
     inner.services.push(service.clone());
     inner.save_services()?;
     let id = service.id;
     drop(inner);
-    // Webview creation happens off-lock (see webviews::activate).
+    // Webview creation happens off-lock (see webviews::activate); the Grok
+    // assistant has no webview and activate() shows the chat surface.
     webviews::activate(&app, &state, &id)?;
     let snapshot = state.lock().map_err(|e| e.to_string())?.snapshot();
     emit_snapshot(&app, &snapshot);
@@ -503,7 +554,19 @@ pub async fn update_service(
     if name.is_empty() {
         return Err("service name must not be empty".to_string());
     }
-    let url = validate_https_url(&url)?;
+    let mut url = validate_https_url(&url)?;
+    // The assistant's URL is its "official website" link, not a browsing
+    // target — whatever arrives over IPC, the pin stands.
+    let is_grok_api = {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        inner
+            .service(&id)
+            .map(|s| s.kind == crate::state::ServiceKind::GrokApi)
+            .unwrap_or(false)
+    };
+    if is_grok_api {
+        url = GROK_URL.to_string();
+    }
     let requested_tls_bypass = ignore_tls_errors.unwrap_or(false);
     if requested_tls_bypass && !tls_bypass_allowed_for_url(&url) {
         return Err(
@@ -560,9 +623,11 @@ pub async fn update_service(
             emit_snapshot(&app, &snapshot);
             return Err(e);
         }
-    } else if (url_changed || tls_changed) && !was_hibernated {
+    } else if (url_changed || tls_changed) && !was_hibernated && !is_grok_api {
         // Recreate the webview at the new URL / new TLS settings (off-lock).
-        // State is already persisted — on failure still emit so the UI matches disk (N10).
+        // The Grok assistant has no webview to recreate — only the snapshot
+        // (name/icon) changed. State is already persisted — on failure still
+        // emit so the UI matches disk (N10).
         if let Err(e) = (|| {
             webviews::close_webview(&app, &id)?;
             webviews::create_service_webview(&app, &service, &data_dir, is_active)?;
@@ -586,13 +651,14 @@ pub async fn remove_service(
     state: State<'_, SharedState>,
     id: String,
 ) -> Result<AppState, String> {
-    let (snapshot, data_dir) = {
+    let (snapshot, data_dir, was_grok_api) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
         let pos = inner
             .services
             .iter()
             .position(|s| s.id == id)
             .ok_or_else(|| format!("unknown service id {id}"))?;
+        let was_grok_api = inner.services[pos].kind == crate::state::ServiceKind::GrokApi;
         inner.services.remove(pos);
         inner.last_active.remove(&id);
         if inner.active_service_id.as_deref() == Some(id.as_str()) {
@@ -600,12 +666,19 @@ pub async fn remove_service(
         }
         inner.save_services()?;
         let data_dir = inner.data_dir.clone();
-        (inner.snapshot(), data_dir)
+        (inner.snapshot(), data_dir, was_grok_api)
     };
     if let Err(e) = webviews::close_webview(&app, &id) {
         eprintln!("remove_service: webview close failed: {e}");
         emit_snapshot(&app, &snapshot);
         return Err(e);
+    }
+    // Removing the assistant deletes its locally stored conversation
+    // history with it (privacy: disconnecting means disconnecting).
+    if was_grok_api {
+        if let Err(e) = crate::grok::clear_conversations(&data_dir) {
+            eprintln!("remove_service: clearing Grok history failed: {e}");
+        }
     }
     // The session profile is unrecoverable garbage after removal (a re-added
     // service always gets a fresh UUID), so reclaim it. Best-effort: WebView2
@@ -658,6 +731,9 @@ pub struct ConfigService {
     pub icon_id: Option<String>,
     #[serde(default)]
     pub ignore_tls_errors: bool,
+    /// Native assistant entries travel as such; absent = Web (older files).
+    #[serde(default, skip_serializing_if = "crate::state::ServiceKind::is_web")]
+    pub kind: crate::state::ServiceKind,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -788,6 +864,7 @@ fn build_config_file(state: &State<'_, SharedState>) -> Result<ConfigFile, Strin
             order: s.order,
             icon_id: s.icon_id.clone(),
             ignore_tls_errors: s.ignore_tls_errors,
+            kind: s.kind,
         })
         .collect();
     services.sort_by_key(|s| s.order);
@@ -892,11 +969,18 @@ pub fn import_config_from_path(
     let mut services = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
     for s in &config.services {
-        let url = match validate_https_url(&s.url) {
-            Ok(u) => u,
-            Err(_) => {
-                skipped.push(s.name.clone());
-                continue;
+        // Native assistant entries are pinned to the official URL at import
+        // (their URL is the "open website" link, never a browsing target).
+        let is_grok_api = s.kind == crate::state::ServiceKind::GrokApi;
+        let url = if is_grok_api {
+            GROK_URL.to_string()
+        } else {
+            match validate_https_url(&s.url) {
+                Ok(u) => u,
+                Err(_) => {
+                    skipped.push(s.name.clone());
+                    continue;
+                }
             }
         };
         let name = s.name.trim().to_string();
@@ -923,6 +1007,7 @@ pub fn import_config_from_path(
             hibernated: false,
             badge_count: 0,
             ignore_tls_errors: ignore_tls,
+            kind: s.kind,
         });
     }
     services.sort_by_key(|s| s.order);
@@ -1027,7 +1112,8 @@ mod tests {
     #[test]
     fn recipe_catalog_matches_spec() {
         let recipes = recipes();
-        assert_eq!(recipes.len(), 60);
+        // 61 web entries + the native Grok API assistant.
+        assert_eq!(recipes.len(), 62);
         assert_eq!(recipes[0].name, "WhatsApp");
         assert_eq!(recipes[0].url, "https://web.whatsapp.com");
         assert_eq!(recipes[0].icon, "WH");
@@ -1051,12 +1137,29 @@ mod tests {
         assert_eq!(recipes[39].icon, "YO");
         assert_eq!(recipes[41].name, "Claude");
         assert_eq!(recipes[41].icon, "CL");
-        assert_eq!(recipes[59].name, "Bitwarden Vault");
-        assert_eq!(recipes[59].icon, "BV");
-        // every entry has a https URL and a 1-2 letter icon
+        // requirement six: the two Grok integration modes, side by side
+        assert_eq!(recipes[45].name, "Grok");
+        assert_eq!(recipes[45].url, "https://grok.com/");
+        assert_eq!(recipes[45].icon_id.as_deref(), Some("grok"));
+        assert_eq!(recipes[45].kind, crate::state::ServiceKind::Web);
+        assert_eq!(recipes[46].name, "Grok API");
+        assert_eq!(recipes[46].url, "https://grok.com/");
+        assert_eq!(recipes[46].icon_id.as_deref(), Some("grok"));
+        assert_eq!(recipes[46].kind, crate::state::ServiceKind::GrokApi);
+        assert_eq!(recipes[47].name, "Notion");
+        assert_eq!(recipes[61].name, "Bitwarden Vault");
+        assert_eq!(recipes[61].icon, "BV");
+        // every entry has a https URL and a 1-2 letter icon; kind is only
+        // ever Web or GrokApi
         for r in &recipes {
             assert!(r.url.starts_with("https://"), "{}: {}", r.name, r.url);
             assert!((1..=2).contains(&r.icon.chars().count()), "{}: {:?}", r.name, r.icon);
+            assert!(
+                r.kind == crate::state::ServiceKind::Web || r.name == "Grok API",
+                "{}: unexpected kind {:?}",
+                r.name,
+                r.kind
+            );
         }
     }
 
@@ -1188,6 +1291,7 @@ mod tests {
                 order: 0,
                 icon_id: Some("telegram".to_string()),
                 ignore_tls_errors: false,
+                kind: crate::state::ServiceKind::Web,
             }],
         };
         let json = serde_json::to_string_pretty(&config).unwrap();

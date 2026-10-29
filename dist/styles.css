@@ -710,3 +710,268 @@ button:focus-visible,
   margin: 6px 0 0;
   line-height: 1.4;
 }
+
+/* ---------- Grok assistant (native "Grok API" service) ----------
+ * All sizes in rem: the accessibility text-size feature scales the root
+ * (16px × the selected Small/Default/Large/Extra Large factor), so every
+ * assistant control follows the app-wide setting automatically. */
+
+html { font-size: calc(16px * var(--text-scale, 1)); }
+
+body.grok-active #grok-chat {
+  display: flex;
+}
+
+#grok-chat {
+  position: fixed;
+  left: 72px;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  flex-direction: column;
+  background: var(--bg);
+  z-index: 6;
+  min-width: 0;
+}
+
+#grok-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+#grok-title-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+}
+#grok-title-icon img { width: 100%; height: 100%; padding: 0.25rem; object-fit: contain; display: block; }
+
+#grok-heading {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.grok-model-label {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#grok-model,
+#grok-history {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  max-width: 13rem;
+}
+
+#grok-status {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  min-width: 5.5rem;
+}
+
+#grok-status.busy::before {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border: 2px solid var(--text-dim);
+  border-top-color: transparent;
+  border-radius: 50%;
+  margin-right: 0.4em;
+  animation: grok-spin 900ms linear infinite;
+  vertical-align: -0.05em;
+}
+
+@keyframes grok-spin { to { transform: rotate(360deg); } }
+
+.grok-header-gap { flex: 1 1 auto; }
+
+#grok-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.grok-msg {
+  max-width: min(46rem, 92%);
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  user-select: text;
+  -webkit-user-select: text;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.grok-msg-user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 0.25rem;
+}
+
+.grok-msg-assistant {
+  align-self: flex-start;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 0.25rem;
+}
+
+.grok-msg-meta {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+}
+
+/* Streaming caret on the assistant bubble being written. */
+.grok-msg-assistant.streaming::after {
+  content: "▍";
+  color: var(--accent);
+  animation: grok-blink 1s steps(2, start) infinite;
+}
+
+@keyframes grok-blink { to { visibility: hidden; } }
+
+.grok-empty {
+  align-self: center;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  padding: 2rem 1rem;
+  max-width: 30rem;
+}
+
+#grok-callout,
+#grok-error {
+  flex: 0 0 auto;
+  margin: 0 1.25rem 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+#grok-callout {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+}
+
+#grok-error {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+}
+
+#grok-error-text { user-select: text; -webkit-user-select: text; }
+
+.grok-callout-actions,
+.grok-error-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+#grok-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem 1rem;
+  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+#grok-input {
+  flex: 1 1 auto;
+  resize: none;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  min-height: 2.4rem;
+  max-height: 9rem;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#grok-input:focus { border-color: var(--accent); }
+
+#grok-send,
+#grok-cancel {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+}
+
+#grok-send:disabled { opacity: 0.45; cursor: default; }
+
+/* Settings panel additions (reuse agent-panel primitives). */
+.grok-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.375rem 0 0.5rem;
+}
+
+#grok-key-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  outline: none;
+}
+
+#grok-key-input:focus { border-color: var(--accent); }
+
+#grok-model-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-top: 0.5rem;
+}
+
+#grok-model-row select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.5rem;
+}
+
+/* Hide web-only fields in the Edit modal for the native assistant. */
+.edit-grok-hidden { display: none !important; }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-grok-clear-history"
+description = "Enables the grok_clear_history command without any pre-configured scope."
+commands.allow = ["grok_clear_history"]
+
+[[permission]]
+identifier = "deny-grok-clear-history"
+description = "Denies the grok_clear_history command without any pre-configured scope."
+commands.deny = ["grok_clear_history"]

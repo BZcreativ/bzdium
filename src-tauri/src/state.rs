@@ -11,6 +11,27 @@ pub const EVENT_URL_CHANGED: &str = "url-changed";
 pub const EVENT_NOTICE: &str = "app-notice";
 pub const UI_WEBVIEW_LABEL: &str = "main";
 
+/// What a sidebar entry is backed by. `Web` services are ordinary embedded
+/// pages (webview per service); `GrokApi` is the native Grok assistant: no
+/// webview at all, the UI webview renders the chat surface instead (see
+/// webviews::activate and grok.rs). Serialization is camelCase on the wire
+/// ("grokApi"); services.json predates this field, so it must default to Web.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ServiceKind {
+    #[default]
+    Web,
+    GrokApi,
+}
+
+impl ServiceKind {
+    /// serde's `skip_serializing_if` hands the field by reference; keep the
+    /// signature in that shape so the attribute path is direct.
+    pub fn is_web(kind: &ServiceKind) -> bool {
+        matches!(kind, ServiceKind::Web)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Service {
@@ -20,6 +41,9 @@ pub struct Service {
     pub icon: String,
     pub enabled: bool,
     pub order: u32,
+    /// What backs this entry; absent (older services.json) means Web.
+    #[serde(default, skip_serializing_if = "ServiceKind::is_web")]
+    pub kind: ServiceKind,
     /// Brand icon slug (dist/assets/icons/<slug>.svg); None -> monogram.
     /// Old services.json files predate this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -90,6 +114,11 @@ pub struct Settings {
     /// runtime. Older settings.json files predate this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub webview2_runtime_folder: Option<String>,
+    /// Grok assistant (xAI API) default model id. Chosen from the live
+    /// model list the API reports, never hardcoded; None = pick the first
+    /// grok-* model the API returns. Older settings.json predate this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grok_model: Option<String>,
 }
 
 fn default_auto_recover() -> bool {
@@ -109,6 +138,7 @@ impl Default for Settings {
             agent_access: false,
             auto_recover: true,
             webview2_runtime_folder: None,
+            grok_model: None,
         }
     }
 }
