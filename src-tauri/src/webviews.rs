@@ -239,6 +239,9 @@ fn open_link_window(app: &AppHandle, url: &tauri::Url) {
         .title(title)
         .inner_size(1024.0, 768.0)
         .data_directory(profile)
+        // Same https-only navigation rule as service webviews: a link window
+        // matches no capability, and it must stay that way.
+        .on_navigation(|url| url.scheme() == "https")
         .on_new_window(move |url, _features| {
             handle_new_window(&sink, &url, false);
             tauri::webview::NewWindowResponse::Deny
@@ -309,7 +312,7 @@ pub fn create_service_webview(
     let window = app
         .get_window(crate::state::UI_WEBVIEW_LABEL)
         .ok_or("main window not found")?;
-    let url = service
+    let url: tauri::Url = service
         .url
         .parse()
         .map_err(|e| format!("invalid service URL {}: {e}", service.url))?;
@@ -324,10 +327,20 @@ pub fn create_service_webview(
     // failed hand-off as a toast — release builds have no console, where an
     // `eprintln!` would be invisible.
     let notice_sink = app.clone();
+    // Prime the URL registry with the service URL BEFORE the webview exists:
+    // the injected badge script reports the title as soon as the page loads,
+    // and `on_page_load` (the only other writer) may not have fired yet —
+    // the origin gate would silently drop that first report (badge race).
+    record_webview_url(&label, url.as_str());
     let builder = tauri::webview::WebviewBuilder::<Wry>::new(label, WebviewUrl::External(url))
         .data_directory(session_dir)
         .initialization_script(badges::init_script(&service.id))
         .initialization_script(crate::watchdog::probe_script(&service.id))
+        // Remote content may only ever navigate its own webview over https.
+        // bzdium's URL policy is https-only everywhere; without this check a
+        // page could walk its webview to another scheme and, if an engine
+        // ever landed it on a local origin, inherit the UI's capabilities.
+        .on_navigation(|url| url.scheme() == "https")
         .on_page_load(|webview, payload| {
             // Drives the URL bar and feeds the badge origin gate.
             // Deliberately lock-free: label + url only.
@@ -699,12 +712,15 @@ pub async fn navigate(
     id: String,
     action: String,
 ) -> Result<AppState, String> {
-    let (service, data_dir, snapshot) = {
+    let (service, data_dir, is_active, snapshot) = {
         let mut inner = state.lock().map_err(|e| e.to_string())?;
         let service = inner
             .service(&id)
             .cloned()
             .ok_or_else(|| format!("unknown service id {id}"))?;
+        if !service.enabled {
+            return Err(format!("{} is disabled — enable it in Edit", service.name));
+        }
         let data_dir = inner.data_dir.clone();
         if service.hibernated {
             if let Some(s) = inner.service_mut(&id) {
@@ -713,11 +729,18 @@ pub async fn navigate(
             inner.save_services()?;
         }
         inner.touch(&id);
+        let is_active = inner.active_service_id.as_deref() == Some(id.as_str());
         let snapshot = inner.snapshot();
-        (service, data_dir, snapshot)
+        (service, data_dir, is_active, snapshot)
     };
     if app.get_webview(&label_for(&id)).is_none() {
-        create_service_webview(&app, &service, &data_dir, true)?;
+        // Create hidden unless this service is the active one: two visible
+        // service webviews at once would paint over each other while the
+        // sidebar still points at the other service.
+        create_service_webview(&app, &service, &data_dir, is_active)?;
+        if is_active {
+            show_only(&app, Some(&id))?;
+        }
     }
     if let Some(webview) = app.get_webview(&label_for(&id)) {
         match action.as_str() {
@@ -829,7 +852,10 @@ pub async fn hibernate_service(
         }
         if let Some(s) = inner.service_mut(&id) {
             s.hibernated = true;
-            s.badge_count = 0;
+            // The unread count is deliberately KEPT, matching the idle
+            // hibernation scanner: the badge is the "you have mail waiting"
+            // signal that justifies waking the service, and a manual
+            // hibernate must not erase it.
         }
         inner.last_active.remove(&id);
         inner.save_services()?;

@@ -42,10 +42,29 @@ fn search_roots() -> Vec<PathBuf> {
 }
 
 /// A candidate folder is a runtime iff it contains msedgewebview2.exe. This
-/// is also the whole validation rule for Settings-stored folders: anything
-/// the loader would reject must never be persisted.
+/// is the base validation; anything that can be *persisted* or *applied*
+/// must additionally pass [`folder_is_allowed`].
 pub fn folder_is_valid(folder: &Path) -> bool {
     folder.is_dir() && folder.join("msedgewebview2.exe").is_file()
+}
+
+/// True when `folder` lies under one of the Evergreen install roots. The
+/// pin reaches `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`, a folder the loader
+/// executes binaries from — so a value that arrived through the agent API
+/// or an imported config must never point outside the runtimes bzdium
+/// itself discovered. Pure path-prefix check; testable with synthetic roots.
+fn path_under_roots(folder: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| folder.starts_with(root))
+}
+
+/// Validation gate for values entering Settings or applied at startup:
+/// must be an existing runtime folder under a known install root.
+pub fn folder_is_allowed(folder: &str) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    let path = Path::new(folder);
+    folder_is_valid(path) && path_under_roots(path, &search_roots())
 }
 
 /// Version sort key: "155.0.4283.62" -> (155, 0, 4283, 62). Unparsable
@@ -91,15 +110,11 @@ pub fn list_runtimes() -> Vec<RuntimeInfo> {
 }
 
 /// Applies the pin for this process. Must run before the first webview is
-/// created. Returns false (and changes nothing) for an invalid folder so a
-/// stale Settings value — e.g. a runtime the Evergreen updater removed —
-/// degrades to the system default instead of breaking startup.
+/// created. A folder outside the known Evergreen roots, or one that has
+/// vanished (e.g. removed by the updater), is refused — the process falls
+/// back to the system default instead of executing from an arbitrary path.
 pub fn apply_override(folder: &str) -> bool {
-    if !cfg!(windows) {
-        return false;
-    }
-    let path = Path::new(folder);
-    if !folder_is_valid(path) {
+    if !folder_is_allowed(folder) {
         return false;
     }
     // The loader only re-reads this per environment creation, and every
@@ -150,5 +165,14 @@ mod tests {
     #[test]
     fn apply_override_rejects_missing_folders() {
         assert!(!apply_override("Z:\\definitely\\not\\here"));
+    }
+
+    #[test]
+    fn paths_outside_the_roots_are_not_allowed() {
+        let roots = vec![PathBuf::from("/rt/a"), PathBuf::from("/rt/b")];
+        assert!(path_under_roots(Path::new("/rt/a/155.0"), &roots));
+        assert!(path_under_roots(Path::new("/rt/b/x"), &roots));
+        assert!(!path_under_roots(Path::new("/elsewhere/155.0"), &roots));
+        assert!(!path_under_roots(Path::new("/rt"), &roots), "the root itself is not a runtime");
     }
 }

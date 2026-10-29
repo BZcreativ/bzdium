@@ -134,6 +134,17 @@ static TRACKS: LazyLock<Mutex<HashMap<String, Track>>> =
 /// which fetches the page's own origin with `cache: 'no-store'` and reports
 /// whether that request settled. A wedged network stack never settles, so
 /// the report never arrives: silence is the signal.
+///
+/// Known limitation: the probe runs in the page's world, because only
+/// in-page traffic exercises the webview's own network stack — the thing
+/// that wedges. That also means a page could, in principle, answer probes
+/// without touching the network: a Service Worker that serves even unique
+/// cache-busted URLs (`?__bzdium_probe=<seq>` defeats HTTP cache and
+/// cache.match-style SW lookups) from Cache Storage would mask a wedge.
+/// Verified empirically NOT to happen for the motivating case (Gmail's SW
+/// does not intercept the probe; the watchdog recovered real Gmail wedges
+/// in live testing). A strict `connect-src` CSP could conversely fail the
+/// probe — which would cause at most budget-capped reloads, never a loop.
 pub fn probe_script(service_id: &str) -> String {
     debug_assert!(
         uuid::Uuid::parse_str(service_id).is_ok(),
