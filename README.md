@@ -46,27 +46,27 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 ### Linux x64
 
-Download from the [Latest Release (v0.2.16)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.16) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.16)):
+Download from the [Latest Release (v0.2.17)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.17) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.17)):
 
-- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.16_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium_0.2.16_amd64.deb) (5.5 MB):
+- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.17_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.17/bzdium_0.2.17_amd64.deb) (5.5 MB):
   ```bash
-  sudo apt install ./bzdium_0.2.16_amd64.deb
-  # or: sudo dpkg -i bzdium_0.2.16_amd64.deb
+  sudo apt install ./bzdium_0.2.17_amd64.deb
+  # or: sudo dpkg -i bzdium_0.2.17_amd64.deb
   ```
-- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.16-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-0.2.16-1.x86_64.rpm) (5.6 MB):
+- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.17-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.17/bzdium-0.2.17-1.x86_64.rpm) (5.6 MB):
   ```bash
-  sudo dnf install ./bzdium-0.2.16-1.x86_64.rpm
-  # or: sudo rpm -i bzdium-0.2.16-1.x86_64.rpm
+  sudo dnf install ./bzdium-0.2.17-1.x86_64.rpm
+  # or: sudo rpm -i bzdium-0.2.17-1.x86_64.rpm
   ```
-- **Universal AppImage** — [`bzdium_0.2.16_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium_0.2.16_amd64.AppImage) (85 MB):
+- **Universal AppImage** — [`bzdium_0.2.17_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.17/bzdium_0.2.17_amd64.AppImage) (85 MB):
   ```bash
-  chmod +x bzdium_0.2.16_amd64.AppImage && ./bzdium_0.2.16_amd64.AppImage
+  chmod +x bzdium_0.2.17_amd64.AppImage && ./bzdium_0.2.17_amd64.AppImage
   ```
 - **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst) (4.2 MB, last built for v0.2.7 — no newer package has been published):
   ```bash
   sudo pacman -U bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.16-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-0.2.16-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-0.2.16-linux-x64.tgz) (5.3 MB):
+- **Portable Tarball** — [`bzdium-0.2.17-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.17/bzdium-0.2.17-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.17/bzdium-0.2.17-linux-x64.tgz) (5.3 MB):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
@@ -75,8 +75,8 @@ Download from the [Latest Release (v0.2.16)](https://github.com/BZcreativ/bzdium
 
 Download from the [Latest Release](https://github.com/BZcreativ/bzdium/releases/latest):
 
-- **Installer** — [`bzdium_0.2.16_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium_0.2.16_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
-- **Portable** — [`bzdium-v0.2.16-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-v0.2.16-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
+- **Installer** — [`bzdium_0.2.17_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.17/bzdium_0.2.17_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
+- **Portable** — [`bzdium-v0.2.17-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.17/bzdium-v0.2.17-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
 
 Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can fetch it if missing).
 
@@ -115,6 +115,11 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
+- **v0.2.17** (per-app fonts):
+  - **New: per-app font family and size, with live preview.** Settings → **Fonts** picks a text family (from the curated list or a custom name) and a size from 8 to 40 px for one service at a time, with an instant preview and a slider/stepper; **Apply to all apps** copies the choice to every other service, while each app keeps its own otherwise. The override is delivered as an in-page stylesheet applied at document start, so it survives navigation and reloads, and a best-effort pass also scales text that a site fixes in pixels — images, video, icons and code blocks are deliberately left at their intrinsic size.
+  - **New: font menu on right-click.** Increase / Decrease / Reset font size and **Font settings…** sit at the top of the service right-click menu, above the existing Reload / Back / Forward / Home / Open in browser entries; text fields keep the native menu so Paste and Undo still work, and an action only ever affects the service whose page was clicked.
+  - **New: customizable, conflict-checked shortcuts.** The four font actions default to `Ctrl+=`, `Ctrl+-`, `Ctrl+0` and `Ctrl+Shift+F` and can be rebound per app from Settings. Duplicate bindings are refused with both actions named, bzdium's own accelerators (`Ctrl+R`, `Ctrl+W`, `Ctrl+Q`, `Ctrl+Shift+I/J`, `Ctrl+F`, `F5`) stay reserved, and `Cmd` is accepted and mapped on macOS.
+  - **New: per-app persistence.** Everything is stored with the service in `services.json` and travels through config export/import; a `services.json` written before this release opens unchanged with the defaults (16 px, system font stack, default shortcuts).
 - **v0.2.16** (recover a broken session):
   - **New: Clear site data.** The service right-click menu can now wipe one service's stored cookies, local storage, IndexedDB, cache and service workers, then reopen it at its configured URL. This is the fix for state that survives every reload — a replayed one-time sign-in handoff, a service worker serving an obsolete bundle, or a site that has decided the stored session is invalid — without deleting the service or digging through DevTools. It asks for confirmation first, because it signs you out of that service; other services and all settings are untouched. Two unit tests cover the profile removal (existing directory, already-missing directory), and the new command is declared in the build script, the capability and the generated permissions.
 - **v0.2.15** (a Settings panel that uses the screen):
