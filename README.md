@@ -62,7 +62,7 @@ Download from the [Latest Release (v0.2.14)](https://github.com/BZcreativ/bzdium
   ```bash
   chmod +x bzdium_0.2.14_amd64.AppImage && ./bzdium_0.2.14_amd64.AppImage
   ```
-- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst) (4.2 MB):
+- **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst) (4.2 MB, last built for v0.2.7 — no newer package has been published):
   ```bash
   sudo pacman -U bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst
   ```
