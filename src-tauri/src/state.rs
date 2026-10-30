@@ -58,6 +58,11 @@ pub struct Service {
     pub badge_count: u32,
     #[serde(default)]
     pub ignore_tls_errors: bool,
+    /// Per-app typography preference (family/size/shortcuts), injected into
+    /// this service's webview only. Absent in services.json files written
+    /// before this field existed -> `FontConfig::default()`.
+    #[serde(default)]
+    pub font: crate::fonts::FontConfig,
 }
 
 fn default_show_url_bar() -> bool {

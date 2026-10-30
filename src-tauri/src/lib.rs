@@ -1,11 +1,15 @@
 pub mod agent;
 mod autostart;
 mod badges;
+// Public like `agent`/`grok`: the integration tests in `tests/` are separate
+// crates, so anything a test must name has to be reachable from the library
+// root. The binary itself is the only other consumer.
+pub mod fonts;
 pub mod grok;
 mod hibernate;
-mod services;
-mod state;
-mod storage;
+pub mod services;
+pub mod state;
+pub mod storage;
 mod tray;
 mod webviews;
 mod watchdog;
@@ -248,6 +252,14 @@ pub fn run() {
             revoke_agent_tokens,
             badges::report_title,
             watchdog::report_probe,
+            fonts::get_font_config,
+            fonts::set_font_config,
+            fonts::adjust_font_size,
+            fonts::reset_font_config,
+            fonts::reset_font_shortcuts,
+            fonts::apply_font_to_all,
+            fonts::list_font_families,
+            fonts::service_menu_action,
             webview2_runtime::list_webview2_runtimes,
             grok::grok_key_status,
             grok::grok_save_key,

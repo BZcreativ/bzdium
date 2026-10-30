@@ -343,10 +343,19 @@ pub fn create_service_webview(
     // and `on_page_load` (the only other writer) may not have fired yet —
     // the origin gate would silently drop that first report (badge race).
     record_webview_url(&label, url.as_str());
+    // Same priming for the per-app font config: the page bundle generated below
+    // is a snapshot of the config at creation time, and `on_page_load` runs
+    // lock-free (it re-applies from this registry, never from the app state).
+    crate::fonts::remember(&service.id, &service.font, &service.url);
     let builder = tauri::webview::WebviewBuilder::<Wry>::new(label, WebviewUrl::External(url))
         .data_directory(session_dir)
         .initialization_script(badges::init_script(&service.id))
         .initialization_script(crate::watchdog::probe_script(&service.id))
+        // Per-app typography: one bundle that carries the stylesheet, the
+        // right-click font menu and the font-size shortcuts. Document-start is
+        // the only place that can style the page before its first paint, and
+        // WebView2 re-runs it on every navigation, so a reload keeps the font.
+        .initialization_script(crate::fonts::init_script(&service.id, &service.font, &service.url))
         // Remote content may only ever navigate its own webview over https.
         // bzdium's URL policy is https-only everywhere; without this check a
         // page could walk its webview to another scheme and, if an engine
@@ -360,6 +369,14 @@ pub fn create_service_webview(
             record_webview_url(&label, payload.url().as_str());
             if let Some(id) = label.strip_prefix("service-") {
                 crate::state::emit_url_changed(&owner, id, payload.url().as_str());
+                // The init script carries the font config as it was when this
+                // webview was created; the user may have changed it since (and
+                // the page can reload itself at any time). Re-apply from the
+                // lock-free registry so every navigation lands on the current
+                // typography instead of the stale snapshot.
+                if let Some((cfg, home)) = crate::fonts::cached(id) {
+                    crate::fonts::apply_live(&owner, id, &cfg, &home);
+                }
             }
         })
         .on_new_window(move |url, _features| {

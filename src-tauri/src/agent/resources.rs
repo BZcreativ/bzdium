@@ -539,6 +539,7 @@ mod tests {
             badge_count: badges,
             ignore_tls_errors: false,
             kind: crate::state::ServiceKind::Web,
+            font: crate::fonts::FontConfig::default(),
         }
     }
 

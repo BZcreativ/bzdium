@@ -230,6 +230,7 @@ mod tests {
             badge_count: 4,
             ignore_tls_errors: true,
             kind: crate::state::ServiceKind::Web,
+            font: crate::fonts::FontConfig::default(),
         };
         let json = serde_json::to_string(&service).unwrap();
         assert!(json.contains("\"badgeCount\":4"));

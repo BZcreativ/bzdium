@@ -513,6 +513,9 @@ pub async fn add_service(
         hibernated: false,
         badge_count: 0,
         ignore_tls_errors: false,
+        // New services start with the default typography; the user can change
+        // it per app (or push it to all apps) from the UI.
+        font: crate::fonts::FontConfig::default(),
         kind,
     };
     inner.services.push(service.clone());
@@ -668,6 +671,10 @@ pub async fn remove_service(
         let data_dir = inner.data_dir.clone();
         (inner.snapshot(), data_dir, was_grok_api)
     };
+    // Drop the cached type/typography entry: the font registry exists for the
+    // lock-free `on_page_load` re-apply path, and a removed service must not
+    // leave an entry behind for a webview that can never belong to it again.
+    crate::fonts::forget(&id);
     if let Err(e) = webviews::close_webview(&app, &id) {
         eprintln!("remove_service: webview close failed: {e}");
         emit_snapshot(&app, &snapshot);
@@ -731,6 +738,12 @@ pub struct ConfigService {
     pub icon_id: Option<String>,
     #[serde(default)]
     pub ignore_tls_errors: bool,
+    /// Per-app typography preference. Travels with the export so a restore
+    /// keeps every service's font. Absent in files written before this field
+    /// existed -> defaults (CONFIG_VERSION deliberately unchanged: older files
+    /// stay importable).
+    #[serde(default)]
+    pub font: crate::fonts::FontConfig,
     /// Native assistant entries travel as such; absent = Web (older files).
     #[serde(default, skip_serializing_if = "crate::state::ServiceKind::is_web")]
     pub kind: crate::state::ServiceKind,
@@ -864,6 +877,7 @@ fn build_config_file(state: &State<'_, SharedState>) -> Result<ConfigFile, Strin
             order: s.order,
             icon_id: s.icon_id.clone(),
             ignore_tls_errors: s.ignore_tls_errors,
+            font: s.font.clone(),
             kind: s.kind,
         })
         .collect();
@@ -1007,6 +1021,15 @@ pub fn import_config_from_path(
             hibernated: false,
             badge_count: 0,
             ignore_tls_errors: ignore_tls,
+            // Imported fonts are clamped and their shortcuts re-validated: a
+            // malformed accelerator falls back to the defaults instead of
+            // failing the whole import (the appearance still imports).
+            font: {
+                let mut font = s.font.clone().clamped();
+                font.shortcuts = crate::fonts::validate_shortcuts(&font.shortcuts)
+                    .unwrap_or_else(|_| crate::fonts::ShortcutBindings::default());
+                font
+            },
             kind: s.kind,
         });
     }
@@ -1291,6 +1314,7 @@ mod tests {
                 order: 0,
                 icon_id: Some("telegram".to_string()),
                 ignore_tls_errors: false,
+                font: crate::fonts::FontConfig::default(),
                 kind: crate::state::ServiceKind::Web,
             }],
         };
@@ -1302,6 +1326,15 @@ mod tests {
         assert_eq!(back.version, CONFIG_VERSION);
         assert_eq!(back.services.len(), 1);
         assert_eq!(back.services[0].id, "seed-1");
+        // Typography travels with the export.
+        assert_eq!(back.services[0].font, crate::fonts::FontConfig::default());
+        // Config files written before the font field import with defaults
+        // (CONFIG_VERSION is intentionally unchanged).
+        let legacy: ConfigService = serde_json::from_str(
+            r#"{"id":"720e8400-e29b-41d4-a716-446655440000","name":"X","url":"https://x.example/","icon":"X","enabled":true,"order":0}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.font, crate::fonts::FontConfig::default());
 
         // Wrong kind/version rejected.
         let bad = json.replace("bzdium-config", "something-else");

@@ -424,6 +424,12 @@ body.light .welcome-wordmark-light { display: block; }
 .ctx-item:hover { background: var(--accent); color: #fff; }
 .ctx-item.danger { color: var(--danger); }
 .ctx-item.danger:hover { background: var(--danger); color: #fff; }
+/* Range limit reached (font size at min/max) — present but not actionable. */
+.ctx-item.disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
 .ctx-sep { height: 1px; background: var(--border); margin: 4px 8px; }
 
 /* ---------- Modals ---------- */
@@ -1315,6 +1321,169 @@ body.grok-active #grok-chat {
   margin-top: -4px;
   font-size: 11.5px;
   text-align: left;
+}
+
+/* --- Fonts section ------------------------------------------------------
+   Per-app family/size controls, the live preview card and the shortcut
+   editor. Colours come from the theme variables, so both themes follow. */
+
+.font-app-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+
+.font-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#settings-modal .font-size-row input[type="number"] {
+  flex: 0 0 auto;
+  width: 82px;
+}
+
+.font-size-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 90px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+  background: transparent;
+  cursor: pointer;
+}
+
+.font-size-row .ghost-btn {
+  flex: 0 0 auto;
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 8px;
+}
+
+.font-size-row .ghost-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Preview card: rendered with the chosen family/size via element styles. */
+.font-preview {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.font-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.font-actions .ghost-btn {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+.font-status {
+  min-height: 1.2em;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* Sub-section heading inside the card; reuses the header subtitle class. */
+.modal-settings h4.settings-subtitle {
+  margin: 18px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.shortcut-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shortcut-row .settings-field-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Read-only-looking capture field: a keydown writes the canonical combo. */
+#settings-modal .shortcut-input {
+  flex: 0 0 auto;
+  width: 190px;
+  height: 34px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color 120ms ease;
+}
+
+#settings-modal .shortcut-input:focus {
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+#settings-modal .shortcut-input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+
+#settings-modal .shortcut-input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#font-section input:disabled,
+#font-section select:disabled,
+#font-section .ghost-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .font-app-row { grid-template-columns: minmax(0, 1fr); }
+  .shortcut-row { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #settings-modal .shortcut-input { transition: none; }
 }
 
 /* --- Pinned action bar -------------------------------------------------- */

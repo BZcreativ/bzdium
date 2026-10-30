@@ -27,6 +27,9 @@
     totalBadgeCount: 15,
     dataDir: "demo"
   };
+  // Browser preview mirrors the backend's per-app font defaults.
+  mockState.services.forEach(function (s) { s.font = defaultFontConfig(); });
+
   var mockRecipes = [
     { name: "WhatsApp", url: "https://web.whatsapp.com", icon: "W" },
     { name: "Telegram", url: "https://web.telegram.org", icon: "T" },
@@ -37,6 +40,47 @@
     { name: "Grok", url: "https://grok.com/", icon: "GR", iconId: "grok" },
     { name: "Grok API", url: "https://grok.com/", icon: "GA", iconId: "grok", kind: "grokApi" }
   ];
+
+  // Same list the Rust `list_font_families` command returns.
+  var mockFontFamilies = [
+    "Arial", "Roboto", "Inter", "Open Sans", "Lato", "Noto Sans", "Segoe UI",
+    "Helvetica Neue", "Verdana", "Tahoma", "Trebuchet MS", "Georgia",
+    "Times New Roman", "Courier New"
+  ];
+
+  function mockService(id) {
+    for (var i = 0; i < mockState.services.length; i++) {
+      if (mockState.services[i].id === id) return mockState.services[i];
+    }
+    return null;
+  }
+
+  /* Mirror the Rust canonicalizer just enough for the preview: a trailing "+"
+   * is the plus key (stored as "Plus" because "+" is also the separator). */
+  function mockCanonicalAccel(value) {
+    var text = String(value || "");
+    if (text.slice(-1) === "+") return text.slice(0, -1) + "Plus";
+    return text;
+  }
+
+  /* Merge a FontConfig the panel sends into the preview defaults; the real
+   * backend does the validation, the preview only has to stay clickable. */
+  function mockMergeFont(cfg) {
+    var base = defaultFontConfig();
+    if (!cfg) return base;
+    base.family = cfg.family || null;
+    if (typeof cfg.sizePx === "number") {
+      base.sizePx = Math.max(base.minSizePx, Math.min(base.maxSizePx, cfg.sizePx));
+    }
+    base.enabled = cfg.enabled !== false;
+    base.scalePxText = cfg.scalePxText !== false;
+    ["increase", "decrease", "reset", "openSettings"].forEach(function (key) {
+      if (cfg.shortcuts && cfg.shortcuts[key]) {
+        base.shortcuts[key] = mockCanonicalAccel(cfg.shortcuts[key]);
+      }
+    });
+    return base;
+  }
 
   // Preview-only conversation so the assistant surface renders in a browser.
   var mockGrokConversations = [];
@@ -105,6 +149,53 @@
       if (mockState.activeServiceId === args.id) mockState.activeServiceId = null;
     }
     if (name === "update_settings") mockState.settings = args.settings;
+    // Per-app fonts, so the Fonts panel works in a plain browser too.
+    if (name === "list_font_families") return Promise.resolve(mockFontFamilies.slice());
+    if (name === "get_font_config") {
+      var fontSvc = mockService(args.id);
+      return Promise.resolve(fontSvc ? fontSvc.font : defaultFontConfig());
+    }
+    if (name === "set_font_config") {
+      var setSvc = mockService(args.id);
+      if (setSvc && args.config) setSvc.font = mockMergeFont(args.config);
+      setTimeout(function () { render(mockState); }, 0);
+      return Promise.resolve(mockState);
+    }
+    if (name === "adjust_font_size") {
+      var adjSvc = mockService(args.id);
+      var adjCfg = adjSvc ? adjSvc.font : defaultFontConfig();
+      if (args.action === "reset") adjCfg.sizePx = adjCfg.defaultSizePx;
+      else if (args.action === "increase") adjCfg.sizePx = Math.min(adjCfg.maxSizePx, adjCfg.sizePx + adjCfg.stepPx);
+      else if (args.action === "decrease") adjCfg.sizePx = Math.max(adjCfg.minSizePx, adjCfg.sizePx - adjCfg.stepPx);
+      setTimeout(function () { render(mockState); }, 0);
+      return Promise.resolve(adjCfg);
+    }
+    if (name === "reset_font_config") {
+      var resetFontSvc = mockService(args.id);
+      if (resetFontSvc) {
+        var keptShortcuts = resetFontSvc.font.shortcuts;
+        resetFontSvc.font = defaultFontConfig();
+        resetFontSvc.font.shortcuts = keptShortcuts;
+      }
+      setTimeout(function () { render(mockState); }, 0);
+      return Promise.resolve(mockState);
+    }
+    if (name === "reset_font_shortcuts") {
+      var shortcutSvc = mockService(args.id);
+      if (shortcutSvc) shortcutSvc.font.shortcuts = defaultFontConfig().shortcuts;
+      setTimeout(function () { render(mockState); }, 0);
+      return Promise.resolve(mockState);
+    }
+    if (name === "apply_font_to_all") {
+      var sourceSvc = mockService(args.id);
+      if (sourceSvc) {
+        mockState.services.forEach(function (s) {
+          if (s.id !== sourceSvc.id) s.font = JSON.parse(JSON.stringify(sourceSvc.font));
+        });
+      }
+      setTimeout(function () { render(mockState); }, 0);
+      return Promise.resolve(mockState);
+    }
     mockState.totalBadgeCount = mockState.services.reduce(function (n, s) { return n + s.badgeCount; }, 0);
     setTimeout(function () { render(mockState); }, 0);
     return Promise.resolve(mockState);
@@ -145,6 +236,10 @@
   function formatBadge(n) {
     return n > 99 ? "99+" : String(n);
   }
+
+  /* The platform-primary modifier is Cmd on macOS, Ctrl elsewhere. Shortcuts
+   * are stored with the portable "Ctrl" token, so matching maps it here. */
+  var isMacLike = /Mac|iPhone|iPad/.test(navigator.platform);
 
   /* ------------------------------------------------------------------ *
    * Icon resolution — the single source of precedence:                 *
@@ -313,6 +408,9 @@
     grokWasActive = grokActive;
 
     refreshUrlBar();
+    // Keep the Fonts panel in step with the snapshot; refreshFontPanel skips
+    // any control the user is currently typing in.
+    if (isSettingsOpen()) refreshFontPanel(false);
   }
   var grokWasActive = false;
 
@@ -375,15 +473,20 @@
     refreshOverlay();
   }
 
-  function addCtxItem(label, danger, onClick) {
+  function addCtxItem(label, danger, onClick, disabled) {
     var item = document.createElement("button");
-    item.className = "ctx-item" + (danger ? " danger" : "");
+    item.className = "ctx-item" + (danger ? " danger" : "") + (disabled ? " disabled" : "");
     item.textContent = label;
     item.setAttribute("role", "menuitem");
-    item.addEventListener("click", function () {
-      closeContextMenu();
-      onClick();
-    });
+    if (disabled) {
+      item.disabled = true;
+      item.setAttribute("aria-disabled", "true");
+    } else {
+      item.addEventListener("click", function () {
+        closeContextMenu();
+        onClick();
+      });
+    }
     contextMenu.appendChild(item);
   }
 
@@ -427,6 +530,25 @@
         );
       });
     } else {
+      // Per-app font controls first: they are the most-used entries for a
+      // long-lived chat window, and the size is only clamped backend-side.
+      var fontCfg = service.font || defaultFontConfig();
+      var fontMin = numberOr(fontCfg.minSizePx, 8);
+      var fontMax = numberOr(fontCfg.maxSizePx, 40);
+      var fontSize = numberOr(fontCfg.sizePx, 16);
+      addCtxItem("Increase font size", false, function () {
+        adjustServiceFont(service, "increase");
+      }, fontSize >= fontMax);
+      addCtxItem("Decrease font size", false, function () {
+        adjustServiceFont(service, "decrease");
+      }, fontSize <= fontMin);
+      addCtxItem("Reset font size", false, function () {
+        adjustServiceFont(service, "reset");
+      });
+      addCtxItem("Font settings…", false, function () {
+        openFontSettings(service.id);
+      });
+      addCtxSep();
       addCtxItem("Reload", false, function () {
         cmd("reload_service", { id: service.id }).catch(function () {});
       });
@@ -801,7 +923,7 @@
 
   /* ----- Settings ----- */
 
-  function openSettingsModal() {
+  function openSettingsModal(preferredFontId) {
     var s = (currentState && currentState.settings) || {};
     $("set-hibernation").value = (typeof s.hibernationMinutes === "number") ? s.hibernationMinutes : 30;
     $("set-tray").checked = s.minimizeToTray !== false;
@@ -823,7 +945,16 @@
     refreshAgentPanel();
     refreshGrokPanel();
     refreshSettingsFooter();
+    // The Fonts panel preselects the active service unless the caller asked
+    // for one explicitly (sidebar menu / in-page context menu).
+    fontPanelId = (typeof preferredFontId === "string" && serviceById(preferredFontId))
+      ? preferredFontId
+      : ((currentState && currentState.activeServiceId) || firstServiceId());
+    fontPanelStatusId = null;
+    ensureFontFamilies();
+    refreshFontPanel(true);
     openModal("settings-modal");
+    if (typeof preferredFontId === "string") revealFontSection();
   }
 
   /* ----- WebView2 runtime pin (Windows only) -----
@@ -1594,6 +1725,799 @@
     );
   });
 
+  /* ---------------- Per-app font settings ----------------
+   * The backend owns FontConfig (clamping, validation, persistence). This
+   * panel is a view over currentState.services[*].font: every mutation goes
+   * through set_font_config / adjust_font_size and the panel re-renders from
+   * the snapshot those commands return or from the font-changed event. */
+
+  var FONT_CUSTOM_VALUE = "__custom__";
+  var FONT_SAVE_DEBOUNCE_MS = 200;
+  var FONT_DEFAULT_SHORTCUTS = {
+    increase: "Ctrl+=",
+    decrease: "Ctrl+-",
+    reset: "Ctrl+0",
+    openSettings: "Ctrl+Shift+F"
+  };
+  var FONT_SHORTCUT_ACTIONS = [
+    { key: "increase", label: "Increase font size" },
+    { key: "decrease", label: "Decrease font size" },
+    { key: "reset", label: "Reset font size" },
+    { key: "openSettings", label: "Font settings" }
+  ];
+  var FONT_PANEL_CONTROLS = [
+    "font-family", "font-custom", "font-size", "font-slider",
+    "font-enabled", "font-scale-px", "font-reset", "font-apply-all",
+    "font-shortcuts-reset"
+  ];
+
+  var fontPanelId = null;
+  var fontPanelStatusId = null;
+  var fontSavedConfig = null;
+  var fontFamilies = null;
+  var fontFamiliesRequested = false;
+  var fontFamilySignature = null;
+  var fontAppSignature = null;
+  var fontSaveTimer = null;
+  var fontShellActions = {};     // id -> when a shell-initiated change happened
+
+  /* Mirrors the Rust FontConfig defaults: used by the browser preview and to
+   * tolerate a snapshot from a backend that predates this feature. */
+  function defaultFontConfig() {
+    return {
+      family: null,
+      sizePx: 16,
+      defaultSizePx: 16,
+      minSizePx: 8,
+      maxSizePx: 40,
+      stepPx: 1,
+      enabled: true,
+      scalePxText: true,
+      shortcuts: {
+        increase: "Ctrl+=",
+        decrease: "Ctrl+-",
+        reset: "Ctrl+0",
+        openSettings: "Ctrl+Shift+F"
+      }
+    };
+  }
+
+  function isSettingsOpen() {
+    return !$("settings-modal").classList.contains("hidden");
+  }
+
+  function firstServiceId() {
+    return (currentState && currentState.services && currentState.services.length)
+      ? currentState.services[0].id : null;
+  }
+
+  function numberOr(value, fallback) {
+    return (typeof value === "number" && isFinite(value)) ? value : fallback;
+  }
+
+  function errorText(err) {
+    if (typeof err === "string") return err;
+    if (err && err.message) return String(err.message);
+    return "Could not save the font settings.";
+  }
+
+  function fontSummary(cfg) {
+    var family = (cfg && cfg.family) ? cfg.family : "System default";
+    var text = family + " · " + numberOr(cfg && cfg.sizePx, 16) + "px";
+    if (cfg && cfg.enabled === false) text += " · overrides off";
+    return text;
+  }
+
+  function setFontStatus(cfg, suffix) {
+    var text = cfg ? fontSummary(cfg) : "";
+    if (text && suffix) text += " — " + suffix;
+    $("font-status").textContent = text;
+  }
+
+  function showFontError(message) {
+    $("font-error").textContent = message;
+    $("font-error").classList.remove("hidden");
+  }
+
+  function hideFontError() {
+    $("font-error").textContent = "";
+    $("font-error").classList.add("hidden");
+  }
+
+  function fontConfigFor(id) {
+    var svc = id ? serviceById(id) : null;
+    return (svc && svc.font) ? svc.font : null;
+  }
+
+  function panelService() {
+    return fontPanelId ? serviceById(fontPanelId) : null;
+  }
+
+  function shortcutInput(action) {
+    return $("font-shortcuts").querySelector('.shortcut-input[data-action="' + action + '"]');
+  }
+
+  function ensureFontFamilies() {
+    if (fontFamilies || fontFamiliesRequested) return;
+    fontFamiliesRequested = true;
+    cmd("list_font_families", {}).then(function (list) {
+      fontFamilies = Array.isArray(list) ? list.slice() : [];
+      fontFamilySignature = null;
+      if (isSettingsOpen() && fontPanelId) refreshFontPanel(false);
+    }).catch(function () {
+      fontFamilies = [];
+      fontFamiliesRequested = false;
+    });
+  }
+
+  function setControlValue(el, value, force) {
+    if (!el) return;
+    if (!force && el === document.activeElement) return;
+    if (el.value !== value) el.value = value;
+  }
+
+  function setCheckbox(id, checked, force) {
+    var el = $(id);
+    if (!force && el === document.activeElement) return;
+    el.checked = checked;
+  }
+
+  function panelMetrics() {
+    var svc = panelService();
+    var cfg = (svc && svc.font) || defaultFontConfig();
+    var min = numberOr(cfg.minSizePx, 8);
+    var max = numberOr(cfg.maxSizePx, 40);
+    if (max <= min) max = min + 1;
+    return {
+      min: min,
+      max: max,
+      step: numberOr(cfg.stepPx, 1),
+      defaultSize: numberOr(cfg.defaultSizePx, 16)
+    };
+  }
+
+  function selectedFamilyFromInputs() {
+    var sel = $("font-family");
+    if (!sel) return null;
+    if (sel.value === FONT_CUSTOM_VALUE) {
+      var custom = $("font-custom");
+      var value = custom ? custom.value.trim() : "";
+      return value || null;
+    }
+    return sel.value || null;
+  }
+
+  function selectedSizeFromInputs() {
+    var metrics = panelMetrics();
+    // sizePx is an f64 backend-side; keep fractional hand-edited values.
+    var raw = parseFloat($("font-size").value);
+    if (isNaN(raw)) raw = metrics.defaultSize;
+    return Math.max(metrics.min, Math.min(metrics.max, raw));
+  }
+
+  function paintFontPreview(family, size) {
+    var el = $("font-preview");
+    if (family) el.style.fontFamily = family;
+    else el.style.removeProperty("font-family");
+    el.style.fontSize = String(numberOr(size, 16)) + "px";
+  }
+
+  /* -/+ disable at the ends of the range; a locked (assistant) panel stays
+   * disabled regardless of the current size. */
+  function updateFontStepButtons(size) {
+    var svc = panelService();
+    var locked = !svc || svc.kind === "grokApi";
+    var metrics = panelMetrics();
+    $("font-dec").disabled = locked || size <= metrics.min;
+    $("font-inc").disabled = locked || size >= metrics.max;
+  }
+
+  /* Builds the whole FontConfig the backend expects from the panel. `set_*`
+   * always saves the complete object, shortcuts included. */
+  function buildConfigFromPanel() {
+    var svc = panelService();
+    if (!svc) return null;
+    var base = svc.font || defaultFontConfig();
+    var metrics = panelMetrics();
+    var shortcuts = {};
+    FONT_SHORTCUT_ACTIONS.forEach(function (action) {
+      var input = shortcutInput(action.key);
+      var saved = (base.shortcuts && base.shortcuts[action.key]) || FONT_DEFAULT_SHORTCUTS[action.key];
+      shortcuts[action.key] = input ? (input.value.trim() || saved) : saved;
+    });
+    return {
+      family: selectedFamilyFromInputs(),
+      sizePx: selectedSizeFromInputs(),
+      defaultSizePx: numberOr(base.defaultSizePx, 16),
+      minSizePx: metrics.min,
+      maxSizePx: metrics.max,
+      stepPx: metrics.step,
+      enabled: $("font-enabled").checked,
+      scalePxText: $("font-scale-px").checked,
+      shortcuts: shortcuts
+    };
+  }
+
+  function cancelFontPanelSave() {
+    if (fontSaveTimer) {
+      clearTimeout(fontSaveTimer);
+      fontSaveTimer = null;
+    }
+  }
+
+  function scheduleFontPanelSave() {
+    cancelFontPanelSave();
+    fontSaveTimer = setTimeout(function () {
+      fontSaveTimer = null;
+      saveFontPanelConfig();
+    }, FONT_SAVE_DEBOUNCE_MS);
+  }
+
+  function flushFontPanelSave() {
+    cancelFontPanelSave();
+    saveFontPanelConfig();
+  }
+
+  function saveFontPanelConfig() {
+    var svc = panelService();
+    if (!svc) return;
+    var config = buildConfigFromPanel();
+    if (!config) return;
+    cancelFontPanelSave();
+    hideFontError();
+    var id = fontPanelId;
+    cmd("set_font_config", { id: id, config: config })
+      .then(function (state) {
+        if (state) render(state);
+        fontSavedConfig = fontConfigFor(id) || config;
+        setFontStatus(fontSavedConfig, "saved");
+      })
+      .catch(function (err) {
+        var message = errorText(err);
+        showFontError(message);
+        $("font-status").textContent = message;
+      });
+  }
+
+  function renderFontAppOptions(force) {
+    var sel = $("font-app");
+    var services = (currentState && currentState.services) || [];
+    var sig = services.map(function (s) {
+      return s.id + "\u0001" + (s.name || "") + "\u0001" + (s.kind || "");
+    }).join("\u0002");
+    if (sig !== fontAppSignature && (force || document.activeElement !== sel)) {
+      fontAppSignature = sig;
+      sel.textContent = "";
+      services.forEach(function (s) {
+        var opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = s.name || s.id;
+        sel.appendChild(opt);
+      });
+    }
+    sel.value = fontPanelId || "";
+  }
+
+  /* Family select: "System default", the backend's families, then "Custom…".
+   * An unavailable/hand-edited family stays visible as a prefilled custom
+   * value instead of silently resetting to the system font. */
+  function renderFontFamilyOptions(family, force) {
+    var sel = $("font-family");
+    var custom = $("font-custom");
+    // Never yank the field out from under someone typing a custom family; the
+    // next refresh after blur reconciles the select with the saved value.
+    if (!force && document.activeElement === custom) return;
+    var families = fontFamilies || [];
+    var isCustom = !!family && families.indexOf(family) === -1;
+    var sig = families.join("\u0001") + "\u0002" + (family || "") + "\u0002" + (fontFamilies ? "y" : "n");
+    if (sig !== fontFamilySignature && (force || document.activeElement !== custom)) {
+      fontFamilySignature = sig;
+      sel.textContent = "";
+      var system = document.createElement("option");
+      system.value = "";
+      system.textContent = "System default";
+      sel.appendChild(system);
+      families.forEach(function (name) {
+        var opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+      var customOpt = document.createElement("option");
+      customOpt.value = FONT_CUSTOM_VALUE;
+      customOpt.textContent = "Custom…";
+      sel.appendChild(customOpt);
+    }
+    var target = isCustom ? FONT_CUSTOM_VALUE : (family || "");
+    var hasOption = target === "" || target === FONT_CUSTOM_VALUE || families.indexOf(target) !== -1;
+    if (force || document.activeElement !== sel) {
+      sel.value = hasOption ? target : FONT_CUSTOM_VALUE;
+    }
+    var customMode = sel.value === FONT_CUSTOM_VALUE;
+    $("font-custom-row").classList.toggle("hidden", !customMode);
+    if (customMode) {
+      if (force || document.activeElement !== custom) custom.value = isCustom ? family : "";
+    } else {
+      custom.value = "";
+    }
+  }
+
+  function ensureShortcutRows() {
+    var wrap = $("font-shortcuts");
+    if (wrap.firstChild) return;
+    FONT_SHORTCUT_ACTIONS.forEach(function (action) {
+      var row = document.createElement("div");
+      row.className = "shortcut-row";
+      var label = document.createElement("span");
+      label.className = "settings-field-label";
+      label.textContent = action.label;
+      var input = document.createElement("input");
+      input.type = "text";
+      input.className = "shortcut-input";
+      input.readOnly = true;
+      input.autocomplete = "off";
+      input.spellcheck = false;
+      input.setAttribute("data-action", action.key);
+      input.setAttribute("aria-label", action.label + " shortcut");
+      input.placeholder = FONT_DEFAULT_SHORTCUTS[action.key] || "";
+      input.addEventListener("keydown", onShortcutKeydown);
+      row.appendChild(label);
+      row.appendChild(input);
+      wrap.appendChild(row);
+    });
+  }
+
+  function refreshFontPanel(force) {
+    if (!currentState) return;
+    var services = currentState.services || [];
+    if (!fontPanelId || !serviceById(fontPanelId)) {
+      fontPanelId = currentState.activeServiceId || (services.length ? services[0].id : null);
+    }
+    ensureFontFamilies();
+    renderFontAppOptions(force);
+
+    var svc = panelService();
+    var isApi = !!(svc && svc.kind === "grokApi");
+    var noService = !svc;
+    var cfg = (svc && svc.font) || defaultFontConfig();
+    var metrics = panelMetrics();
+    var size = Math.max(metrics.min, Math.min(metrics.max, numberOr(cfg.sizePx, metrics.defaultSize)));
+
+    $("font-size").setAttribute("min", String(metrics.min));
+    $("font-size").setAttribute("max", String(metrics.max));
+    $("font-size").setAttribute("step", String(metrics.step));
+    $("font-slider").setAttribute("min", String(metrics.min));
+    $("font-slider").setAttribute("max", String(metrics.max));
+    $("font-slider").setAttribute("step", String(metrics.step));
+
+    FONT_PANEL_CONTROLS.forEach(function (id) { $(id).disabled = noService || isApi; });
+    setControlValue($("font-size"), String(size), force);
+    setControlValue($("font-slider"), String(size), force);
+    updateFontStepButtons(size);
+
+    renderFontFamilyOptions(cfg.family || null, force);
+    setCheckbox("font-enabled", cfg.enabled !== false, force);
+    setCheckbox("font-scale-px", cfg.scalePxText !== false, force);
+    $("font-disabled-note").classList.toggle("hidden", cfg.enabled !== false);
+    $("font-app-note").classList.toggle("hidden", !isApi);
+    paintFontPreview(cfg.family || null, size);
+
+    ensureShortcutRows();
+    FONT_SHORTCUT_ACTIONS.forEach(function (action) {
+      var input = shortcutInput(action.key);
+      if (!input) return;
+      var value = (cfg.shortcuts && cfg.shortcuts[action.key]) || "";
+      input.placeholder = FONT_DEFAULT_SHORTCUTS[action.key] || "";
+      input.disabled = noService || isApi;
+      if (!force && document.activeElement === input) return;
+      input.value = shortcutForDisplay(value);
+    });
+
+    fontSavedConfig = cfg;
+
+    if (fontPanelStatusId !== fontPanelId) {
+      fontPanelStatusId = fontPanelId;
+      hideFontError();
+      setFontStatus((svc && !isApi) ? cfg : null, null);
+    }
+  }
+
+  function revealFontSection() {
+    var section = $("font-section");
+    if (!section || !section.scrollIntoView) return;
+    setTimeout(function () {
+      section.scrollIntoView({ block: "start" });
+    }, 0);
+  }
+
+  function openFontSettings(id) {
+    if (!currentState) return;
+    if (id && !serviceById(id)) return;
+    openSettingsModal(id || currentState.activeServiceId || firstServiceId());
+  }
+
+  function noteShellFontAction(id) {
+    if (id) fontShellActions[id] = Date.now();
+  }
+
+  /* adjust_font_size keeps the clamping in Rust; used by the sidebar menu and
+   * the +/- buttons, so both show the resulting size as soon as it lands. */
+  function adjustServiceFont(service, action) {
+    if (!service) return;
+    noteShellFontAction(service.id);
+    cmd("adjust_font_size", { id: service.id, action: action })
+      .then(function (cfg) {
+        if (cfg && typeof cfg.sizePx === "number") toast("Font size " + cfg.sizePx + "px");
+      })
+      .catch(function () {});
+  }
+
+  function adjustPanelFont(action) {
+    var svc = panelService();
+    if (!svc) return;
+    cancelFontPanelSave();
+    noteShellFontAction(svc.id);
+    cmd("adjust_font_size", { id: svc.id, action: action }).then(function (cfg) {
+      if (!cfg) return;
+      fontSavedConfig = cfg;
+      var min = numberOr(cfg.minSizePx, 8);
+      var max = numberOr(cfg.maxSizePx, 40);
+      var size = Math.max(min, Math.min(max, numberOr(cfg.sizePx, 16)));
+      setControlValue($("font-size"), String(size), false);
+      setControlValue($("font-slider"), String(size), false);
+      updateFontStepButtons(size);
+      paintFontPreview(cfg.family || null, size);
+      setFontStatus(cfg, "saved");
+      toast("Font size " + size + "px");
+    }).catch(function (err) {
+      var message = errorText(err);
+      showFontError(message);
+      $("font-status").textContent = message;
+    });
+  }
+
+  /* ---- Shortcut capture ---- */
+
+  function shortcutKeyName(e) {
+    var key = e.key;
+    if (!key || key === "Dead" || key === "Unidentified") return null;
+    if (key === "Control" || key === "Alt" || key === "Shift" || key === "Meta" ||
+        key === "OS" || key === "AltGraph" || key === "CapsLock" || key === "NumLock" ||
+        key === "ScrollLock" || key === "Fn") {
+      return null;
+    }
+    if (key === " ") return "Space";
+    if (key.length === 1) return key.toUpperCase();
+    return key;
+  }
+
+  /* Canonical form: Ctrl+Alt+Shift+Key (only the modifiers actually held). */
+  function buildShortcutCombo(e) {
+    var key = shortcutKeyName(e);
+    if (!key) return null;
+    var parts = [];
+    var primary = isMacLike ? (e.metaKey || e.ctrlKey) : e.ctrlKey;
+    if (primary) parts.push("Ctrl");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+    parts.push(key);
+    return parts.join("+");
+  }
+
+  function savedShortcutFor(action) {
+    var saved = fontSavedConfig && fontSavedConfig.shortcuts
+      ? fontSavedConfig.shortcuts[action] : "";
+    return shortcutForDisplay(saved || "");
+  }
+
+  /* The backend stores the plus key as "Plus" (canonical_accel maps a trailing
+   * "+" to it because "+" is also the accelerator separator). Show the more
+   * readable "+"/"-" spelling in the editor; the raw value still matches. */
+  function shortcutForDisplay(combo) {
+    if (!combo) return "";
+    if (combo.slice(-4) === "Plus") return combo.slice(0, -4) + "+";
+    if (combo.slice(-5) === "Minus") return combo.slice(0, -5) + "-";
+    return combo;
+  }
+
+  function onShortcutKeydown(e) {
+    var input = e.currentTarget;
+    // Tab must keep moving focus through the form.
+    if (e.key === "Tab") return;
+    if (e.key === "Escape") {
+      // Abort capture without letting Escape close the whole Settings dialog.
+      e.preventDefault();
+      e.stopPropagation();
+      input.value = savedShortcutFor(input.getAttribute("data-action"));
+      input.blur();
+      return;
+    }
+    if (e.isComposing) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    var combo = buildShortcutCombo(e);
+    if (!combo) return; // modifier-only press: wait for a real key
+    hideFontError();
+    input.value = combo;
+    saveCapturedShortcut(input);
+  }
+
+  function saveCapturedShortcut(input) {
+    var svc = panelService();
+    if (!svc) return;
+    var action = input.getAttribute("data-action");
+    var config = buildConfigFromPanel();
+    if (!config) return;
+    var id = fontPanelId;
+    hideFontError();
+    cmd("set_font_config", { id: id, config: config })
+      .then(function (state) {
+        if (state) render(state);
+        fontSavedConfig = fontConfigFor(id) || config;
+        setFontStatus(fontSavedConfig, "saved");
+      })
+      .catch(function (err) {
+        var message = errorText(err);
+        showFontError(message);
+        $("font-status").textContent = message;
+        // Conflict / reserved: put the previously saved combination back.
+        input.value = savedShortcutFor(action);
+      });
+  }
+
+  /* ---- Matching shell keys against the saved combinations ---- */
+
+  function parseShortcutCombo(combo) {
+    var rest = String(combo || "");
+    var ctrl = false;
+    var alt = false;
+    var shift = false;
+    var match = rest.match(/^ctrl\+/i);
+    if (match) { ctrl = true; rest = rest.slice(match[0].length); }
+    match = rest.match(/^alt\+/i);
+    if (match) { alt = true; rest = rest.slice(match[0].length); }
+    match = rest.match(/^shift\+/i);
+    if (match) { shift = true; rest = rest.slice(match[0].length); }
+    if (!rest) return null;
+    return { ctrl: ctrl, alt: alt, shift: shift, key: rest };
+  }
+
+  function shortcutKeyMatches(configured, e) {
+    var key = String(configured || "");
+    if (!key) return false;
+    if (key === "Space") return e.key === " " || e.key === "Space";
+    if (key === "Plus" || key === "+" || key === "=") {
+      return e.key === "+" || e.key === "=" || e.code === "NumpadAdd";
+    }
+    if (key === "Minus" || key === "-") {
+      return e.key === "-" || e.key === "_" || e.code === "NumpadSubtract";
+    }
+    if (key === "0") return e.key === "0" || e.code === "Numpad0";
+    if (key.length === 1) return String(e.key).toUpperCase() === key.toUpperCase();
+    return e.key === key;
+  }
+
+  function shortcutMatchesEvent(combo, e) {
+    var parsed = parseShortcutCombo(combo);
+    if (!parsed) return false;
+    var primary = isMacLike ? e.metaKey : e.ctrlKey;
+    if (parsed.ctrl !== primary) return false;
+    if (parsed.alt !== e.altKey) return false;
+    // Shift is part of typing "=" (Ctrl+Shift+=) and "_" — the page-side
+    // bundle ignores it for symbol keys, so the shell does too.
+    var symbolKey = parsed.key === "=" || parsed.key === "+" || parsed.key === "Plus" ||
+      parsed.key === "-" || parsed.key === "_" || parsed.key === "Minus";
+    if (parsed.shift !== e.shiftKey && !(symbolKey && !parsed.shift)) return false;
+    if (!isMacLike && e.metaKey) return false;
+    return shortcutKeyMatches(parsed.key, e);
+  }
+
+  function isEditableTarget(el) {
+    if (!el || !el.closest) return false;
+    if (el.isContentEditable) return true;
+    return !!el.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']");
+  }
+
+  function handleShellFontShortcut(e) {
+    if (!currentState || !currentState.activeServiceId) return;
+    var svc = serviceById(currentState.activeServiceId);
+    if (!svc || !svc.font || !svc.font.shortcuts) return;
+    var shortcuts = svc.font.shortcuts;
+    var matched = null;
+    for (var i = 0; i < FONT_SHORTCUT_ACTIONS.length; i++) {
+      var action = FONT_SHORTCUT_ACTIONS[i].key;
+      if (shortcutMatchesEvent(shortcuts[action], e)) { matched = action; break; }
+    }
+    if (!matched) return;
+    if (anyModalOpen()) return;
+    var opensSettings = matched === "openSettings";
+    // Typing and IME composition win over size shortcuts; opening the font
+    // panel stays available from inside an editable field.
+    if (!opensSettings) {
+      if (e.isComposing || isEditableTarget(e.target)) return;
+      if (svc.kind === "grokApi") return; // the assistant has no page to restyle
+    }
+    e.preventDefault();
+    if (opensSettings) {
+      openFontSettings(svc.id);
+      return;
+    }
+    noteShellFontAction(svc.id);
+    cmd("adjust_font_size", { id: svc.id, action: matched }).then(function (cfg) {
+      if (cfg && typeof cfg.sizePx === "number") toast("Font size " + cfg.sizePx + "px");
+    }).catch(function () {});
+  }
+
+  function handleFontChanged(payload) {
+    if (!payload || !payload.id || !payload.config) return;
+    var svc = serviceById(payload.id);
+    if (svc) {
+      // Authoritative delta from the backend: merge it so the panel and the
+      // sidebar menu see the new min/max/size before the next full snapshot.
+      svc.font = payload.config;
+    }
+    var shellInitiated = !!fontShellActions[payload.id];
+    delete fontShellActions[payload.id];
+    if (isSettingsOpen()) {
+      if (fontPanelId === payload.id) refreshFontPanel(false);
+      return;
+    }
+    // The panel is closed: tell the user what changed, unless the shell
+    // already reported the size change its own toast.
+    if (!shellInitiated) toast(fontSummary(payload.config));
+  }
+
+  /* ---- Fonts panel wiring ---- */
+
+  $("font-app").addEventListener("change", function () {
+    fontPanelId = this.value || null;
+    fontPanelStatusId = null;
+    hideFontError();
+    refreshFontPanel(true);
+  });
+
+  $("font-family").addEventListener("change", function () {
+    if (this.value === FONT_CUSTOM_VALUE) {
+      var svc = panelService();
+      var custom = $("font-custom");
+      $("font-custom-row").classList.remove("hidden");
+      if (!custom.value) custom.value = (svc && svc.font && svc.font.family) || "";
+      paintFontPreview(selectedFamilyFromInputs(), selectedSizeFromInputs());
+      custom.focus();
+      return;
+    }
+    $("font-custom-row").classList.add("hidden");
+    $("font-custom").value = "";
+    paintFontPreview(this.value || null, selectedSizeFromInputs());
+    saveFontPanelConfig();
+  });
+
+  $("font-custom").addEventListener("input", function () {
+    paintFontPreview(selectedFamilyFromInputs(), selectedSizeFromInputs());
+    scheduleFontPanelSave();
+  });
+
+  $("font-custom").addEventListener("change", function () {
+    if (!this.value.trim() && $("font-family").value === FONT_CUSTOM_VALUE) {
+      $("font-family").value = "";
+      $("font-custom-row").classList.add("hidden");
+      paintFontPreview(null, selectedSizeFromInputs());
+    }
+    flushFontPanelSave();
+  });
+
+  $("font-size").addEventListener("input", function () {
+    var raw = parseFloat(this.value);
+    if (isNaN(raw)) return;
+    var metrics = panelMetrics();
+    var clamped = Math.max(metrics.min, Math.min(metrics.max, raw));
+    $("font-slider").value = String(clamped);
+    updateFontStepButtons(clamped);
+    paintFontPreview(selectedFamilyFromInputs(), clamped);
+    scheduleFontPanelSave();
+  });
+
+  $("font-size").addEventListener("change", function () {
+    var size = selectedSizeFromInputs();
+    this.value = String(size);
+    $("font-slider").value = String(size);
+    updateFontStepButtons(size);
+    paintFontPreview(selectedFamilyFromInputs(), size);
+    flushFontPanelSave();
+  });
+
+  $("font-slider").addEventListener("input", function () {
+    var size = parseFloat(this.value);
+    if (isNaN(size)) return;
+    $("font-size").value = String(size);
+    updateFontStepButtons(size);
+    paintFontPreview(selectedFamilyFromInputs(), size);
+    scheduleFontPanelSave();
+  });
+  $("font-slider").addEventListener("change", function () {
+    flushFontPanelSave();
+  });
+
+  $("font-dec").addEventListener("click", function () { adjustPanelFont("decrease"); });
+  $("font-inc").addEventListener("click", function () { adjustPanelFont("increase"); });
+
+  $("font-enabled").addEventListener("change", function () {
+    $("font-disabled-note").classList.toggle("hidden", this.checked);
+    saveFontPanelConfig();
+  });
+
+  $("font-scale-px").addEventListener("change", function () {
+    saveFontPanelConfig();
+  });
+
+  $("font-reset").addEventListener("click", function () {
+    var svc = panelService();
+    if (!svc) return;
+    openConfirm(
+      "Reset the font settings for “" + svc.name + "”? Family, size and options go back to the defaults. Shortcuts are kept.",
+      function () {
+        cancelFontPanelSave();
+        cmd("reset_font_config", { id: svc.id }).then(function (state) {
+          if (state) render(state);
+          fontSavedConfig = fontConfigFor(svc.id) || defaultFontConfig();
+          setFontStatus(fontSavedConfig, "defaults restored");
+          toast("Font settings reset.");
+        }).catch(function (err) {
+          var message = errorText(err);
+          showFontError(message);
+          $("font-status").textContent = message;
+        });
+      },
+      "Reset"
+    );
+  });
+
+  $("font-apply-all").addEventListener("click", function () {
+    var svc = panelService();
+    if (!svc) return;
+    openConfirm(
+      "Copy “" + svc.name + "”'s font settings and shortcuts to every other app?",
+      function () {
+        cmd("apply_font_to_all", { id: svc.id }).then(function (state) {
+          if (state) render(state);
+          var applied = fontConfigFor(svc.id) || defaultFontConfig();
+          fontSavedConfig = applied;
+          setFontStatus(applied, "applied to all apps");
+          toast("Font settings applied to all apps.");
+        }).catch(function (err) {
+          var message = errorText(err);
+          showFontError(message);
+          $("font-status").textContent = message;
+        });
+      },
+      "Apply to all"
+    );
+  });
+
+  $("font-shortcuts-reset").addEventListener("click", function () {
+    var svc = panelService();
+    if (!svc) return;
+    openConfirm(
+      "Reset this app's font shortcuts to the defaults?",
+      function () {
+        cmd("reset_font_shortcuts", { id: svc.id }).then(function (state) {
+          if (state) render(state);
+          var reset = fontConfigFor(svc.id) || defaultFontConfig();
+          fontSavedConfig = reset;
+          setFontStatus(reset, "shortcuts reset");
+          toast("Font shortcuts reset.");
+        }).catch(function (err) {
+          var message = errorText(err);
+          showFontError(message);
+          $("font-status").textContent = message;
+        });
+      },
+      "Reset shortcuts"
+    );
+  });
+
   /* ---------------- Global listeners ---------------- */
 
   document.addEventListener("mousedown", function (e) {
@@ -1605,10 +2529,14 @@
   window.addEventListener("resize", closeContextMenu);
 
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
+    // Escape closes an open overlay first; with nothing open it is still
+    // available as a configured font shortcut.
+    if (e.key === "Escape" && (anyModalOpen() || !contextMenu.classList.contains("hidden"))) {
       if (!contextMenu.classList.contains("hidden")) closeContextMenu();
-      else if (anyModalOpen()) closeAllModals();
+      else closeAllModals();
+      return;
     }
+    handleShellFontShortcut(e);
   });
 
   /* ---------------- URL bar ---------------- */
@@ -1682,6 +2610,14 @@
   if (hasTauri) {
     tauri.event.listen("state-changed", function (e) { render(e.payload); })
       .catch(function () {});
+    // Per-app fonts changed (e.g. from the in-page right-click menu or a
+    // shortcut inside the service page): refresh the shell view.
+    tauri.event.listen("font-changed", function (e) { handleFontChanged(e.payload); })
+      .catch(function () {});
+    // "Font Settings…" was chosen inside a service page.
+    tauri.event.listen("open-font-settings", function (e) {
+      if (e.payload && e.payload.id) openFontSettings(e.payload.id);
+    }).catch(function () {});
     tauri.event.listen("url-changed", function (e) {
       if (e.payload && e.payload.id) {
         currentUrls[e.payload.id] = e.payload.url;

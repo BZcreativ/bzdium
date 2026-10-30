@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reset-font-config"
+description = "Enables the reset_font_config command without any pre-configured scope."
+commands.allow = ["reset_font_config"]
+
+[[permission]]
+identifier = "deny-reset-font-config"
+description = "Denies the reset_font_config command without any pre-configured scope."
+commands.deny = ["reset_font_config"]

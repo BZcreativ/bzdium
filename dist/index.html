@@ -207,6 +207,62 @@
             </section>
           </div>
 
+          <!-- Per-app font overrides: family, size, live preview and the
+               keyboard shortcuts. Every control id here is part of the
+               app.js contract: do not rename. The shortcut rows themselves
+               are built by app.js (#font-shortcuts). -->
+          <section id="font-section" class="settings-section" aria-labelledby="settings-fonts-title">
+            <h3 class="settings-section-title" id="settings-fonts-title">Fonts</h3>
+            <p class="settings-section-desc">Per-app text family and size. Overrides are best effort — a site can still win with its own styles.</p>
+            <div class="settings-fields">
+              <label class="settings-field">
+                <span class="settings-field-label">App</span>
+                <select id="font-app"></select>
+              </label>
+              <p class="settings-hint hidden" id="font-app-note">The built-in assistant has no page to restyle.</p>
+              <div class="font-app-row">
+                <label class="settings-field">
+                  <span class="settings-field-label">Font family</span>
+                  <select id="font-family"></select>
+                </label>
+                <label id="font-custom-row" class="settings-field hidden">
+                  <span class="settings-field-label">Custom family</span>
+                  <input id="font-custom" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="e.g. Inter">
+                </label>
+              </div>
+              <div class="settings-field">
+                <span class="settings-field-label">Font size (px)</span>
+                <div class="font-size-row">
+                  <button type="button" id="font-dec" class="ghost-btn" title="Decrease font size" aria-label="Decrease font size">-</button>
+                  <input id="font-size" type="number" min="8" max="40" step="1" aria-label="Font size in pixels">
+                  <input id="font-slider" type="range" min="8" max="40" step="1" aria-label="Font size slider">
+                  <button type="button" id="font-inc" class="ghost-btn" title="Increase font size" aria-label="Increase font size">+</button>
+                </div>
+              </div>
+              <div id="font-preview" class="font-preview">Aa Bb Cc — The quick brown fox jumps over the lazy dog. 0123456789</div>
+              <label class="checkbox-label">
+                <input id="font-enabled" type="checkbox"> Enable custom font overrides for this app
+              </label>
+              <p class="settings-hint hidden" id="font-disabled-note">Overrides are off for this app. The family and size are saved, but not applied.</p>
+              <label class="checkbox-label">
+                <input id="font-scale-px" type="checkbox"> Also scale text the site fixes in pixels (best effort)
+              </label>
+              <div class="font-actions">
+                <button type="button" id="font-reset" class="ghost-btn">Reset to defaults…</button>
+                <button type="button" id="font-apply-all" class="ghost-btn">Apply to all apps…</button>
+                <span id="font-status" class="font-status" role="status" aria-live="polite"></span>
+              </div>
+            </div>
+
+            <h4 class="settings-subtitle">Keyboard shortcuts</h4>
+            <p class="settings-hint">Click a shortcut field and press the combination you want. These work while bzdium has focus.</p>
+            <div id="font-shortcuts" class="shortcut-grid"></div>
+            <div class="font-actions">
+              <button type="button" id="font-shortcuts-reset" class="ghost-btn">Reset shortcuts to defaults…</button>
+            </div>
+            <p class="form-error hidden" id="font-error"></p>
+          </section>
+
           <section class="settings-section" aria-labelledby="settings-perf-title">
             <h3 class="settings-section-title" id="settings-perf-title">Performance &amp; diagnostics</h3>
             <p class="settings-section-desc">Page recovery, developer tooling and the Windows webview runtime.</p>
