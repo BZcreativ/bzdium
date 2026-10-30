@@ -442,6 +442,16 @@
       addCtxItem("Open in browser", false, function () {
         cmd("open_service_external", { id: service.id }).catch(function () {});
       });
+      // Recovery action: a broken session can survive every reload because the
+      // bad state is in the WebView2 profile, not in the page. Confirm first —
+      // this signs the user out of the service.
+      addCtxItem("Clear site data…", true, function () {
+        openConfirm(
+          "Clear “" + service.name + "”'s cookies, local storage and cache? You will be signed out of this service and have to sign in again.",
+          function () { cmd("clear_service_data", { id: service.id }).catch(function () {}); },
+          "Clear data"
+        );
+      });
       addCtxSep();
       if (service.hibernated) {
         addCtxItem("Wake", false, function () {

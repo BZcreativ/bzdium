@@ -674,6 +674,76 @@ pub async fn reload_service(
     schedule_hard_reload(&app, &id)
 }
 
+/// Removes a service's stored browser state (cookies, localStorage, IndexedDB,
+/// cache and service workers) and reopens the page at its configured URL.
+///
+/// This is the recovery path for state that lives in the profile rather than
+/// in the page: a replayed one-time sign-in token, a service worker serving an
+/// obsolete bundle, or a site that has decided the stored session is invalid.
+/// A hard reload cannot fix those because it keeps the same profile.
+#[tauri::command]
+pub async fn clear_service_data(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    id: String,
+) -> Result<AppState, String> {
+    let (service, data_dir) = {
+        let inner = state.lock().map_err(|e| e.to_string())?;
+        let service = inner
+            .service(&id)
+            .cloned()
+            .ok_or_else(|| format!("unknown service id {id}"))?;
+        if service.kind == crate::state::ServiceKind::GrokApi {
+            return Err(format!(
+                "{} is the native assistant — it stores no web data",
+                service.name
+            ));
+        }
+        (service, inner.data_dir.clone())
+    };
+    // Close first: WebView2 keeps file handles on the profile while a
+    // controller exists, so deleting under a live webview would race it.
+    if let Err(e) = close_webview(&app, &id) {
+        eprintln!("clear_service_data: closing {id} failed: {e}");
+    }
+    let profile = data_dir.join(crate::storage::SESSIONS_DIR).join(&id);
+    tauri::async_runtime::spawn_blocking(move || remove_profile_dir(&profile))
+        .await
+        .map_err(|e| e.to_string())??;
+    // Recreate after the old browser process has exited (RELOAD_SETTLE_MS).
+    let snapshot = schedule_hard_reload(&app, &id)?;
+    crate::state::emit_notice(
+        &app,
+        &format!("Cleared stored data for {}.", service.name),
+    );
+    Ok(snapshot)
+}
+
+/// Deletes a WebView2 profile directory. WebView2 releases its handles a
+/// moment after the controller closes, so a briefly busy directory is retried
+/// instead of reported as a failure. A directory that is already gone counts
+/// as success — the caller's goal is "no stored data left".
+fn remove_profile_dir(dir: &std::path::Path) -> Result<(), String> {
+    let mut last: Option<std::io::Error> = None;
+    for attempt in 0..12 {
+        match fs::remove_dir_all(dir) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => {
+                last = Some(e);
+                if attempt < 11 {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
+            }
+        }
+    }
+    Err(format!(
+        "could not delete {}: {}",
+        dir.display(),
+        last.map(|e| e.to_string()).unwrap_or_default()
+    ))
+}
+
 /// Shared hard-reload path: the Reload command, the page watchdog
 /// (`watchdog.rs`), and any future recovery flow all go through here, so
 /// there is exactly one teardown/rebuild sequence to reason about.
@@ -944,4 +1014,24 @@ pub async fn wake_service(
     }
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
+}
+
+#[cfg(test)]
+mod clear_data_tests {
+    use super::remove_profile_dir;
+
+    #[test]
+    fn removes_an_existing_profile_dir() {
+        let base = std::env::temp_dir().join(format!("bzdium-clear-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(base.join("EBWebView").join("Default")).unwrap();
+        std::fs::write(base.join("EBWebView").join("Default").join("Cookies"), b"x").unwrap();
+        assert!(remove_profile_dir(&base).is_ok());
+        assert!(!base.exists());
+    }
+
+    #[test]
+    fn missing_directory_is_success() {
+        let base = std::env::temp_dir().join(format!("bzdium-missing-{}", uuid::Uuid::new_v4()));
+        assert!(remove_profile_dir(&base).is_ok());
+    }
 }

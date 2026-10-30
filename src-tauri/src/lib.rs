@@ -233,6 +233,7 @@ pub fn run() {
             services::get_service_icon,
             webviews::set_active_service,
             webviews::reload_service,
+            webviews::clear_service_data,
             webviews::navigate,
             webviews::navigate_url,
             webviews::hibernate_service,

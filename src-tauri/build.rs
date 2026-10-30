@@ -45,6 +45,7 @@ fn main() {
             "reorder_services",
             "set_active_service",
             "reload_service",
+            "clear_service_data",
             "navigate",
             "hibernate_service",
             "wake_service",

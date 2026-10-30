@@ -46,27 +46,27 @@ Measured on Windows 11 & Linux, 2 live messenger webviews.
 
 ### Linux x64
 
-Download from the [Latest Release (v0.2.14)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.14) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.14)):
+Download from the [Latest Release (v0.2.16)](https://github.com/BZcreativ/bzdium/releases/tag/v0.2.16) (mirrored on [Forgejo](https://forgejo.bzlab.duckdns.org/buzman/bzdium/releases/tag/v0.2.16)):
 
-- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.14_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium_0.2.14_amd64.deb) (5.5 MB):
+- **Debian / Ubuntu / Mint (.deb)** — [`bzdium_0.2.16_amd64.deb`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium_0.2.16_amd64.deb) (5.5 MB):
   ```bash
-  sudo apt install ./bzdium_0.2.14_amd64.deb
-  # or: sudo dpkg -i bzdium_0.2.14_amd64.deb
+  sudo apt install ./bzdium_0.2.16_amd64.deb
+  # or: sudo dpkg -i bzdium_0.2.16_amd64.deb
   ```
-- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.14-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-0.2.14-1.x86_64.rpm) (5.6 MB):
+- **Fedora / RHEL / openSUSE (.rpm)** — [`bzdium-0.2.16-1.x86_64.rpm`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-0.2.16-1.x86_64.rpm) (5.6 MB):
   ```bash
-  sudo dnf install ./bzdium-0.2.14-1.x86_64.rpm
-  # or: sudo rpm -i bzdium-0.2.14-1.x86_64.rpm
+  sudo dnf install ./bzdium-0.2.16-1.x86_64.rpm
+  # or: sudo rpm -i bzdium-0.2.16-1.x86_64.rpm
   ```
-- **Universal AppImage** — [`bzdium_0.2.14_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium_0.2.14_amd64.AppImage) (85 MB):
+- **Universal AppImage** — [`bzdium_0.2.16_amd64.AppImage`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium_0.2.16_amd64.AppImage) (85 MB):
   ```bash
-  chmod +x bzdium_0.2.14_amd64.AppImage && ./bzdium_0.2.14_amd64.AppImage
+  chmod +x bzdium_0.2.16_amd64.AppImage && ./bzdium_0.2.16_amd64.AppImage
   ```
 - **Arch Linux / Omarchy / Manjaro (.pkg.tar.zst)** — [`bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.7/bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst) (4.2 MB, last built for v0.2.7 — no newer package has been published):
   ```bash
   sudo pacman -U bzdium-bin-0.2.7-1-x86_64.pkg.tar.zst
   ```
-- **Portable Tarball** — [`bzdium-0.2.14-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-0.2.14-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-0.2.14-linux-x64.tgz) (5.3 MB):
+- **Portable Tarball** — [`bzdium-0.2.16-linux-x64.tar.gz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-0.2.16-linux-x64.tar.gz) / [`.tgz`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-0.2.16-linux-x64.tgz) (5.3 MB):
   Extract anywhere and run `./bzdium`. Stores sessions in `bzdium-data/` next to the binary if writable.
 
 *Requires `webkit2gtk-4.1` (or `webkit2gtk-4.0`), `gtk3`, and `libayatana-appindicator3` (preinstalled on most desktop Linux distributions).*
@@ -75,8 +75,8 @@ Download from the [Latest Release (v0.2.14)](https://github.com/BZcreativ/bzdium
 
 Download from the [Latest Release](https://github.com/BZcreativ/bzdium/releases/latest):
 
-- **Installer** — [`bzdium_0.2.14_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium_0.2.14_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
-- **Portable** — [`bzdium-v0.2.14-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.14/bzdium-v0.2.14-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
+- **Installer** — [`bzdium_0.2.16_x64-setup.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium_0.2.16_x64-setup.exe) (3.0 MB): Start Menu + desktop shortcuts, uninstaller, per-user or all-users. Installed copies keep their data in `%APPDATA%\bzdium` (the install folder is read-only).
+- **Portable** — [`bzdium-v0.2.16-x64-portable.exe`](https://github.com/BZcreativ/bzdium/releases/download/v0.2.16/bzdium-v0.2.16-x64-portable.exe) (14 MB): rename to `bzdium.exe`, drop it anywhere writable — even a USB stick — and run; data lives in a `bzdium-data` folder next to it.
 
 Both need the WebView2 runtime (preinstalled on Windows 10/11; the installer can fetch it if missing).
 
@@ -115,6 +115,10 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
+- **v0.2.16** (recover a broken session):
+  - **New: Clear site data.** The service right-click menu can now wipe one service's stored cookies, local storage, IndexedDB, cache and service workers, then reopen it at its configured URL. This is the fix for state that survives every reload — a replayed one-time sign-in handoff, a service worker serving an obsolete bundle, or a site that has decided the stored session is invalid — without deleting the service or digging through DevTools. It asks for confirmation first, because it signs you out of that service; other services and all settings are untouched. Two unit tests cover the profile removal (existing directory, already-missing directory), and the new command is declared in the build script, the capability and the generated permissions.
+- **v0.2.15** (a Settings panel that uses the screen):
+  - **New: Settings rebuilt for real desktops.** The dialog is now a wide, sectioned panel — up to 800 px wide and 88% of the viewport height, centred, with General/Interface cards, a full-width Performance & diagnostics card, and dedicated Agent Access API and Grok sections. A fixed header and a pinned action bar keep Cancel, Save, Export and Import visible while only the settings body scrolls, so there is no horizontal scrolling, no clipped controls, and no scrolling to reach Save at 1366×768 or above. Every control keeps its id, label, type and behaviour, and `app.js` is byte-for-byte unchanged.
 - **v0.2.14** (Grok):
   - **New: Grok, two ways.** **Grok** opens grok.com through the ordinary webview service architecture; **Grok API** is a native assistant that chats with xAI's Grok models over the official API with streaming replies, cancellation, local conversation history and a live model picker. The API key is stored only as a user-scoped Windows DPAPI blob — never rendered in full, logged, or exported — and provider errors are classified (auth/credits/rate-limit/model/network/timeout) so retry is offered only for transient failures. API mode requires Windows; website mode works everywhere. The built-in catalog grows to 62 services, with 24 new tests plus two opt-in live tests against api.x.ai (see `docs/grok-integration.md`).
 - **v0.2.13** (side-loadable WebView2 runtimes):

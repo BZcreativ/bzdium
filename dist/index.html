@@ -155,131 +155,183 @@
     </div>
   </div>
 
-  <!-- Settings modal -->
+  <!-- Settings modal — a wide, sectioned desktop panel. The dialog is a fixed
+       frame (head / scrolling body / pinned action bar) so only the settings
+       content scrolls and Save stays reachable at every window size. Every
+       control id below is part of the app.js contract: do not rename. -->
   <div id="settings-modal" class="modal-overlay hidden">
-    <div class="modal" role="dialog" aria-labelledby="settings-modal-title">
-      <h2 id="settings-modal-title">Settings</h2>
-      <form id="settings-form">
-        <label>Hibernation timeout (minutes, 0 = never)
-          <input id="set-hibernation" type="number" min="0" max="1440" step="1">
-        </label>
-        <label class="checkbox-label">
-          <input id="set-tray" type="checkbox"> Minimize to tray
-        </label>
-        <label class="checkbox-label">
-          <input id="set-autostart" type="checkbox"> Start with Windows
-        </label>
-        <label class="checkbox-label">
-          <input id="set-urlbar" type="checkbox"> Show address bar
-        </label>
-        <label class="checkbox-label">
-          <input id="set-dark" type="checkbox"> Dark UI
-        </label>
-        <label class="checkbox-label">
-          <input id="set-devmode" type="checkbox"> Developer mode (DevTools for troubleshooting)
-        </label>
-        <label class="checkbox-label">
-          <input id="set-autorecover" type="checkbox"> Auto-recover stuck pages (reload a page that stopped responding)
-        </label>
-        <label id="wv2rt-row" class="hidden">
-          WebView2 runtime (Windows)
-          <select id="set-wv2rt"></select>
-          <span class="settings-hint">Takes effect after restarting bzdium. Pin an older runtime if pages wedge on a fresh one — a Microsoft "Fixed Version" runtime can be side-loaded into <code>bzdium-data/webview2-runtimes/&lt;version&gt;/</code>.</span>
-        </label>
-        <label class="checkbox-label">
-          <input id="set-link-bzdium" type="checkbox"> Open links in a bzdium window instead of my browser
-        </label>
-        <label class="checkbox-label">
-          <input id="set-agent-access" type="checkbox"> Enable Agent Access API (MCP + REST)
-        </label>
+    <div class="modal modal-settings" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+      <header class="settings-head">
+        <div class="settings-head-text">
+          <h2 id="settings-modal-title">Settings</h2>
+          <p class="settings-subtitle">Appearance, behaviour and integrations for bzdium.</p>
+        </div>
+        <button type="button" class="settings-close" data-close aria-label="Close settings" title="Close">✕</button>
+      </header>
 
-        <!-- Agent Access panel: only meaningful once the layer is on. -->
-        <div id="agent-panel" class="agent-panel hidden">
-          <p class="agent-hint">
-            A loopback-only server lets a local AI agent drive bzdium.
-            Nothing is reachable from the internet.
-          </p>
-          <p class="agent-row">
-            <span class="agent-label">Endpoint</span>
-            <code id="agent-endpoint">—</code>
-          </p>
-          <p class="agent-row">
-            <span class="agent-label">API key</span>
-            <code id="agent-token" class="agent-token">Not created yet</code>
-            <button type="button" id="agent-copy-btn" class="ghost-btn agent-mini">Copy</button>
-          </p>
-          <p class="agent-note hidden" id="agent-token-note">
-            Copy this key now — it is shown only once and cannot be recovered.
-          </p>
-          <div class="config-actions agent-actions">
-            <button type="button" id="agent-new-token-btn" class="ghost-btn">New API key…</button>
-            <button type="button" id="agent-admin-token-btn" class="ghost-btn hidden">New admin key…</button>
-            <button type="button" id="agent-revoke-btn" class="ghost-btn">Revoke all keys</button>
+      <form id="settings-form" class="settings-form">
+        <div class="settings-body">
+
+          <div class="settings-row">
+            <section class="settings-section" aria-labelledby="settings-general-title">
+              <h3 class="settings-section-title" id="settings-general-title">General</h3>
+              <p class="settings-section-desc">Startup, tray and memory behaviour.</p>
+              <div class="settings-fields">
+                <label class="settings-field">
+                  <span class="settings-field-label">Hibernation timeout (minutes, 0 = never)</span>
+                  <input id="set-hibernation" type="number" min="0" max="1440" step="1">
+                </label>
+                <label class="checkbox-label">
+                  <input id="set-tray" type="checkbox"> Minimize to tray
+                </label>
+                <label class="checkbox-label">
+                  <input id="set-autostart" type="checkbox"> Start with Windows
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section" aria-labelledby="settings-interface-title">
+              <h3 class="settings-section-title" id="settings-interface-title">Interface</h3>
+              <p class="settings-section-desc">Window layout, theme and link handling.</p>
+              <div class="settings-fields">
+                <label class="checkbox-label">
+                  <input id="set-urlbar" type="checkbox"> Show address bar
+                </label>
+                <label class="checkbox-label">
+                  <input id="set-dark" type="checkbox"> Dark UI
+                </label>
+                <label class="checkbox-label">
+                  <input id="set-link-bzdium" type="checkbox"> Open links in a bzdium window instead of my browser
+                </label>
+              </div>
+            </section>
           </div>
-          <label class="checkbox-label">
-            <input id="set-agent-admin" type="checkbox"> Allow admin tools (delete services, replace all configuration)
-          </label>
-          <p class="agent-hint">
-            New keys are always write-scoped. Admin keys must be requested
-            separately, and only while this box is ticked.
-          </p>
-          <p class="form-error hidden" id="agent-error"></p>
+
+          <section class="settings-section" aria-labelledby="settings-perf-title">
+            <h3 class="settings-section-title" id="settings-perf-title">Performance &amp; diagnostics</h3>
+            <p class="settings-section-desc">Page recovery, developer tooling and the Windows webview runtime.</p>
+            <div class="settings-fields settings-fields-grid">
+              <label class="checkbox-label">
+                <input id="set-autorecover" type="checkbox"> Auto-recover stuck pages (reload a page that stopped responding)
+              </label>
+              <label class="checkbox-label">
+                <input id="set-devmode" type="checkbox"> Developer mode (DevTools for troubleshooting)
+              </label>
+            </div>
+            <label id="wv2rt-row" class="settings-field hidden">
+              <span class="settings-field-label">WebView2 runtime (Windows)</span>
+              <select id="set-wv2rt"></select>
+              <span class="settings-hint">Takes effect after restarting bzdium. Pin an older runtime if pages wedge on a fresh one — a Microsoft "Fixed Version" runtime can be side-loaded into <code>bzdium-data/webview2-runtimes/&lt;version&gt;/</code>.</span>
+            </label>
+          </section>
+
+          <section class="settings-section" aria-labelledby="settings-agent-title">
+            <h3 class="settings-section-title" id="settings-agent-title">Agent Access API</h3>
+            <p class="settings-section-desc">Expose bzdium to a local AI agent over a loopback-only MCP and REST server.</p>
+            <div class="settings-fields">
+              <label class="checkbox-label">
+                <input id="set-agent-access" type="checkbox"> Enable Agent Access API (MCP + REST)
+              </label>
+            </div>
+
+            <!-- Agent Access panel: only meaningful once the layer is on. -->
+            <div id="agent-panel" class="agent-panel hidden">
+              <p class="agent-hint">
+                A loopback-only server lets a local AI agent drive bzdium.
+                Nothing is reachable from the internet.
+              </p>
+              <p class="agent-row">
+                <span class="agent-label">Endpoint</span>
+                <code id="agent-endpoint">—</code>
+              </p>
+              <p class="agent-row">
+                <span class="agent-label">API key</span>
+                <code id="agent-token" class="agent-token">Not created yet</code>
+                <button type="button" id="agent-copy-btn" class="ghost-btn agent-mini">Copy</button>
+              </p>
+              <p class="agent-note hidden" id="agent-token-note">
+                Copy this key now — it is shown only once and cannot be recovered.
+              </p>
+              <div class="config-actions agent-actions">
+                <button type="button" id="agent-new-token-btn" class="ghost-btn">New API key…</button>
+                <button type="button" id="agent-admin-token-btn" class="ghost-btn hidden">New admin key…</button>
+                <button type="button" id="agent-revoke-btn" class="ghost-btn">Revoke all keys</button>
+              </div>
+              <label class="checkbox-label">
+                <input id="set-agent-admin" type="checkbox"> Allow admin tools (delete services, replace all configuration)
+              </label>
+              <p class="agent-hint">
+                New keys are always write-scoped. Admin keys must be requested
+                separately, and only while this box is ticked.
+              </p>
+              <p class="form-error hidden" id="agent-error"></p>
+            </div>
+          </section>
+
+          <!-- Grok assistant (xAI API): credentials, connection, model.
+               Mode A — the plain "Grok" website entry — needs none of this;
+               this panel configures the native "Grok API" assistant only. -->
+          <section class="settings-section settings-section-grow" aria-labelledby="settings-grok-title">
+            <h3 class="settings-section-title" id="settings-grok-title">Grok assistant</h3>
+            <p class="settings-section-desc">Credentials and model for the native <strong>Grok API</strong> service.</p>
+            <div id="grok-panel" class="agent-panel">
+              <p class="agent-hint">
+                The <strong>Grok API</strong> service talks to xAI's API with your
+                own key from console.x.ai. API use is billed by xAI separately —
+                a Grok website or X subscription does not include API credits.
+                The key is stored encrypted with Windows DPAPI, is never shown in
+                full again, and is not part of exported configuration files.
+              </p>
+              <p class="agent-row">
+                <span class="agent-label">API key</span>
+                <code id="grok-key-state">Not configured</code>
+              </p>
+              <p class="grok-key-row">
+                <input id="grok-key-input" type="password" placeholder="Paste key (starts with xai-)"
+                       autocomplete="off" spellcheck="false" aria-label="New xAI API key">
+                <button type="button" id="grok-key-save" class="ghost-btn agent-mini">Save key</button>
+                <button type="button" id="grok-key-remove" class="ghost-btn agent-mini">Remove key</button>
+              </p>
+              <p class="agent-row">
+                <span class="agent-label">Connection</span>
+                <code id="grok-connection">—</code>
+                <button type="button" id="grok-test-btn" class="ghost-btn agent-mini">Test</button>
+              </p>
+              <label id="grok-model-row">
+                Default model
+                <select id="set-grok-model"></select>
+                <span class="settings-hint">Loaded live from the API when you press Test — used for new conversations.</span>
+              </label>
+              <div class="config-actions agent-actions">
+                <button type="button" id="grok-open-console" class="ghost-btn">console.x.ai…</button>
+                <button type="button" id="grok-open-docs" class="ghost-btn">API docs…</button>
+                <button type="button" id="grok-open-site" class="ghost-btn">grok.com…</button>
+                <button type="button" id="grok-clear-history" class="ghost-btn">Delete chat history…</button>
+              </div>
+              <p class="form-error hidden" id="grok-error"></p>
+            </div>
+          </section>
+
+          <p id="settings-footer" class="settings-footer hidden"></p>
         </div>
 
-        <!-- Grok assistant (xAI API): credentials, connection, model.
-             Mode A — the plain "Grok" website entry — needs none of this;
-             this panel configures the native "Grok API" assistant only. -->
-        <div id="grok-panel" class="agent-panel">
-          <p class="agent-hint">
-            The <strong>Grok API</strong> service talks to xAI's API with your
-            own key from console.x.ai. API use is billed by xAI separately —
-            a Grok website or X subscription does not include API credits.
-            The key is stored encrypted with Windows DPAPI, is never shown in
-            full again, and is not part of exported configuration files.
-          </p>
-          <p class="agent-row">
-            <span class="agent-label">API key</span>
-            <code id="grok-key-state">Not configured</code>
-          </p>
-          <p class="grok-key-row">
-            <input id="grok-key-input" type="password" placeholder="Paste key (starts with xai-)"
-                   autocomplete="off" spellcheck="false" aria-label="New xAI API key">
-            <button type="button" id="grok-key-save" class="ghost-btn agent-mini">Save key</button>
-            <button type="button" id="grok-key-remove" class="ghost-btn agent-mini">Remove key</button>
-          </p>
-          <p class="agent-row">
-            <span class="agent-label">Connection</span>
-            <code id="grok-connection">—</code>
-            <button type="button" id="grok-test-btn" class="ghost-btn agent-mini">Test</button>
-          </p>
-          <label id="grok-model-row">
-            Default model
-            <select id="set-grok-model"></select>
-            <span class="settings-hint">Loaded live from the API when you press Test — used for new conversations.</span>
-          </label>
-          <div class="config-actions agent-actions">
-            <button type="button" id="grok-open-console" class="ghost-btn">console.x.ai…</button>
-            <button type="button" id="grok-open-docs" class="ghost-btn">API docs…</button>
-            <button type="button" id="grok-open-site" class="ghost-btn">grok.com…</button>
-            <button type="button" id="grok-clear-history" class="ghost-btn">Delete chat history…</button>
+        <footer class="settings-actionbar">
+          <p class="form-error hidden" id="settings-error"></p>
+          <div class="settings-actionbar-row">
+            <div class="settings-actionbar-secondary">
+              <button type="button" id="export-config-btn" class="ghost-btn">Export configuration…</button>
+              <button type="button" id="import-config-btn" class="ghost-btn">Import configuration…</button>
+              <div id="dev-actions" class="settings-dev-actions hidden">
+                <button type="button" id="devtools-ui-btn" class="ghost-btn">Inspect UI (DevTools)</button>
+              </div>
+            </div>
+            <div class="modal-actions settings-actionbar-primary">
+              <button type="button" class="ghost-btn" data-close>Cancel</button>
+              <button type="submit" class="primary-btn">Save</button>
+            </div>
           </div>
-          <p class="form-error hidden" id="grok-error"></p>
-        </div>
-
-        <p class="form-error hidden" id="settings-error"></p>
-        <div class="modal-actions">
-          <button type="button" class="ghost-btn" data-close>Cancel</button>
-          <button type="submit" class="primary-btn">Save</button>
-        </div>
+        </footer>
       </form>
-      <div class="config-actions">
-        <button type="button" id="export-config-btn" class="ghost-btn">Export configuration…</button>
-        <button type="button" id="import-config-btn" class="ghost-btn">Import configuration…</button>
-      </div>
-      <p id="settings-footer" class="settings-footer hidden"></p>
-      <div id="dev-actions" class="config-actions hidden">
-        <button type="button" id="devtools-ui-btn" class="ghost-btn">Inspect UI (DevTools)</button>
-      </div>
     </div>
   </div>
 

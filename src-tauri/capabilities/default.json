@@ -15,6 +15,7 @@
     "allow-reorder-services",
     "allow-set-active-service",
     "allow-reload-service",
+    "allow-clear-service-data",
     "allow-navigate",
     "allow-hibernate-service",
     "allow-wake-service",
