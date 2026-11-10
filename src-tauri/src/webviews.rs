@@ -410,7 +410,7 @@ pub fn create_service_webview(
 
     #[cfg(target_os = "linux")]
     {
-        crate::linux_layout::attach_service(&window, &webview, position, size, service.ignore_tls_errors)?;
+        crate::linux_layout::attach_service(&window, &webview, position, service.ignore_tls_errors)?;
     }
 
     if visible {
@@ -476,8 +476,14 @@ pub fn show_only(app: &AppHandle, active_id: Option<&str>) -> Result<(), String>
         }
         let is_active = active_id == Some(&label["service-".len()..]);
         if is_active {
-            webview.set_position(position).map_err(|e| e.to_string())?;
-            webview.set_size(size).map_err(|e| e.to_string())?;
+            // Linux: geometry is owned by linux_layout (allocating children in
+            // the GtkFixed keeps the toplevel minimum at 480x400; wry's
+            // set_size would pin it at the current size again).
+            #[cfg(not(target_os = "linux"))]
+            {
+                webview.set_position(position).map_err(|e| e.to_string())?;
+                webview.set_size(size).map_err(|e| e.to_string())?;
+            }
             webview.show().map_err(|e| e.to_string())?;
             let _ = webview.set_focus();
         } else {
@@ -485,7 +491,12 @@ pub fn show_only(app: &AppHandle, active_id: Option<&str>) -> Result<(), String>
         }
     }
     #[cfg(target_os = "linux")]
-    crate::linux_layout::sync_all_bounds(&window, position, size, active_id)?;
+    {
+        // Geometry on Linux is derived from the container allocation; only
+        // the top offset (URL bar) is state. `size` is for the Windows path.
+        let _ = size;
+        crate::linux_layout::sync_all_bounds(&window, position.y, active_id)?;
+    }
     Ok(())
 }
 
@@ -498,6 +509,8 @@ pub fn sync_bounds(app: &AppHandle) {
     let Ok((position, size)) = service_bounds(app, &window) else {
         return;
     };
+    // Linux: same as show_only — linux_layout owns geometry on GTK.
+    #[cfg(not(target_os = "linux"))]
     for webview in window.webviews() {
         if !webview.label().starts_with("service-") {
             continue;
@@ -511,7 +524,9 @@ pub fn sync_bounds(app: &AppHandle) {
             let state: tauri::State<'_, SharedState> = app.state();
             state.lock().ok().and_then(|i| i.active_service_id.clone())
         };
-        let _ = crate::linux_layout::sync_all_bounds(&window, position, size, active_id.as_deref());
+        // Top offset only — see show_only.
+        let _ = size;
+        let _ = crate::linux_layout::sync_all_bounds(&window, position.y, active_id.as_deref());
     }
 }
 

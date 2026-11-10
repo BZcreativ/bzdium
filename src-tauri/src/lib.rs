@@ -298,7 +298,13 @@ pub fn run() {
                 .expect("main window must exist");
 
             #[cfg(target_os = "linux")]
-            linux_layout::init_layout(&window).map_err(|e| e.to_string())?;
+            {
+                linux_layout::init_layout(&window).map_err(|e| e.to_string())?;
+                // A window that opens larger than the monitor cannot be
+                // resized back once its decorations land off-screen — clamp
+                // the 1280x800 default on small displays (VM reports).
+                linux_layout::clamp_window_to_monitor(&window);
+            }
 
             let handle = app.handle().clone();
             window.on_window_event(move |event| match event {
@@ -321,6 +327,10 @@ pub fn run() {
                         webviews::hide_link_windows(&handle);
                     }
                 }
+                // Linux re-layouts synchronously off the GtkFixed allocation
+                // (linux_layout.rs); doing IPC sync per Resized event fought
+                // the WebKit repaints and made interactive resizing janky.
+                #[cfg(not(target_os = "linux"))]
                 WindowEvent::Resized(_) => webviews::sync_bounds(&handle),
                 _ => {}
             });
