@@ -30,16 +30,24 @@ Collect all seven in `dist-release-0.2.15/`:
 | Linux deb/rpm/AppImage | `npx @tauri-apps/cli build --bundles deb,rpm,appimage` | `bzdium_0.2.15_amd64.deb`, `bzdium-0.2.15-1.x86_64.rpm`, `bzdium_0.2.15_amd64.AppImage` |
 | Linux portable tarball | `tar -czf bzdium-0.2.15-linux-x64.tar.gz -C src-tauri/target/release bzdium` (same bytes as `.tgz`) | `bzdium-0.2.15-linux-x64.tar.gz` / `.tgz` |
 
-On this dev machine the Linux bundles are built inside WSL (the Ubuntu
-distro already carries the pinned 1.98.0 toolchain, `cargo-tauri`, and the
-GTK/WebKit/AppIndicator dev packages). Use a separate target directory so
-the Windows build cache is not touched:
+The Linux bundles are built inside the **`bzdium-deb12`** WSL distro — a
+plain Debian 12 (glibc 2.36) install that pins the artifacts to the oldest
+glibc we support. Do **not** build them in the Ubuntu 26.04 WSL distro: its
+glibc 2.43 links GLIBC_2.38+ symbol references into the binary and into every
+library the AppImage bundles, and the result dies on Debian 12 with
+``version `GLIBC_2.38' not found`` (the v0.2.17 regression reported by a user
+on Debian 12). The distro carries the pinned 1.98.0 toolchain and
+`cargo-tauri` 2.12.3; `build-helpers/setup-debian12-build.sh` recreates it
+from scratch if it is ever missing.
 
-    wsl.exe -d Ubuntu -e bash -lc "cd /mnt/e/dev/bzdium/src-tauri && CARGO_TARGET_DIR=/root/bzdium-target cargo tauri build --bundles deb,rpm,appimage"
+    MSYS_NO_PATHCONV=1 wsl.exe -d bzdium-deb12 -u root -e bash \
+      /mnt/e/dev/bzdium/build-helpers/build-linux-deb12.sh \
+      /mnt/e/dev/bzdium/dist-release-0.2.15
 
-Artifacts land in `/root/bzdium-target/release/bundle/{deb,rpm,appimage}/`
-and the binary for the tarballs is `/root/bzdium-target/release/bzdium`
-(`tar -czf bzdium-0.2.15-linux-x64.tar.gz -C /root/bzdium-target/release bzdium`).
+Artifacts land directly in the staging directory given as the argument (the
+script also builds both tarballs and refuses to finish if any artifact needs a
+symbol newer than Debian 12's glibc 2.36 / GCC 12 libstdc++). The intermediate
+cargo cache is `/root/bzdium-target` inside the distro.
 The build also emits an MSI; it is not linked from the README and has not
 been uploaded since v0.2.10, so leave it out of the release.
 
