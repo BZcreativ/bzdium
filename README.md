@@ -115,6 +115,8 @@ Your logins live **only** in each service's isolated browser profile (`bzdium-da
 
 ## Release History
 
+- **v0.2.19** (Copy link):
+  - **New: Copy link in the service right-click menu.** Right-clicking a hyperlink now offers **Copy link** (above Copy/Select all, shown only when the click actually hit a link). The URL is resolved and captured at right-click time — a page that rewrites its links a moment later cannot change what lands on your clipboard — and the copy happens entirely inside the page, adding no new permissions or attack surface. Works on Windows and Linux alike.
 - **v0.2.18** (Linux: resizable again):
   - **Fixed: the window could grow but never shrink.** On Linux, the window's minimum size silently tracked its current size, so every enlargement was permanent — until the window exceeded the screen with no title bar or edge left to grab (reported on Debian 12 / GNOME: "hard to resize, gets out of screen"). Resizing now works in both directions down to the intended 480×400 minimum, interactive resize is smoother (layout is applied in one pass with the window instead of a burst of per-event round-trips), and a window can no longer open larger than the display (the 1280×800 default is clamped to the monitor on small screens).
   - **Linux packages now build on Debian 12 (glibc 2.36)** — the oldest baseline that supports bzdium's WebView stack — so the `.deb`, `.rpm`, `.AppImage` and tarballs install and run on Debian 12 and similarly aged distros out of the box. v0.2.17's Linux assets were also reissued from this baseline after its initial ones required a newer glibc.
