@@ -1296,6 +1296,29 @@ const FONT_SCRIPT: &str = r##"(function () {
     return editable === '' || editable === 'true' || editable === 'plaintext-only';
   }
 
+  // Resolved absolute URL of the link under the contextmenu target, or '' when
+  // no link was hit. Called at EVENT time: the DOM may mutate before the user
+  // clicks the menu row, so callers capture the returned string, not the node.
+  // closest() is guarded (target may be a text node / SVG, and the upward walk
+  // stays inside one tree — window-level listeners see a retargeted host, so
+  // no shadow-root boundary is ever crossed). SVG anchors expose `href` as an
+  // SVGAnimatedString, not a string, so they take the attribute fallback.
+  function linkHrefAt(target) {
+    var anchor = null;
+    try {
+      if (target && typeof target.closest === 'function') { anchor = target.closest('a[href]'); }
+    } catch (e) { anchor = null; }
+    if (!anchor) { return ''; }
+    try {
+      if (typeof anchor.href === 'string' && anchor.href) { return anchor.href; }
+    } catch (e) {}
+    try {
+      var raw = anchor.getAttribute ? anchor.getAttribute('href') : null;
+      if (raw) { return new URL(raw, location.href).href; }
+    } catch (e) {}
+    return '';
+  }
+
   function closeMenu() {
     if (!menuEl) { return; }
     try { if (menuEl.parentNode) { menuEl.parentNode.removeChild(menuEl); } } catch (e) {}
@@ -1308,6 +1331,36 @@ const FONT_SCRIPT: &str = r##"(function () {
     line.style.margin = '4px 2px';
     line.style.background = '#2c3150';
     return line;
+  }
+
+  // Copies text fully in-page: a temporary off-screen textarea keeps the
+  // execCommand('copy') baseline (WebKitGTK has no navigator.clipboard) and
+  // the no-new-IPC invariant — nothing leaves the page. The prior selection
+  // is saved and restored best-effort, like the neighboring rows.
+  function copyTextToClipboard(text) {
+    var area = null;
+    var saved = null;
+    try {
+      var sel = window.getSelection ? window.getSelection() : null;
+      if (sel && sel.rangeCount > 0) { saved = sel.getRangeAt(0).cloneRange(); }
+    } catch (e) { saved = null; }
+    try {
+      area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.top = '0';
+      area.style.left = '-9999px';
+      (document.body || document.documentElement).appendChild(area);
+      if (typeof area.select === 'function') { area.select(); }
+      document.execCommand('copy');
+    } catch (e) {}
+    try { if (area && area.parentNode) { area.parentNode.removeChild(area); } } catch (e) {}
+    try {
+      if (saved) {
+        var restore = window.getSelection ? window.getSelection() : null;
+        if (restore) { restore.removeAllRanges(); restore.addRange(saved); }
+      }
+    } catch (e) {}
   }
 
   // bzdium dark palette; per-element style assignments are CSP-safe (no
@@ -1346,7 +1399,7 @@ const FONT_SCRIPT: &str = r##"(function () {
     return row;
   }
 
-  function openMenu(x, y) {
+  function openMenu(x, y, linkHref) {
     closeMenu(); // only ONE menu exists at a time
     try {
       var enabled = !!cfg.enabled;
@@ -1390,6 +1443,11 @@ const FONT_SCRIPT: &str = r##"(function () {
       rows.push(menuRow('Home', '', false, function () { if (state.home) { location.assign(state.home); } }));
       rows.push(menuRow('Open in browser', '', false, function () { sendAction('open-external'); }));
       rows.push(separator());
+      // linkHref was resolved at contextmenu time and is already a string, so
+      // the row still copies the right URL even if the DOM mutates meanwhile.
+      if (linkHref) {
+        rows.push(menuRow('Copy link', '', false, function () { copyTextToClipboard(linkHref); }));
+      }
       var selection = '';
       try { selection = window.getSelection ? String(window.getSelection() || '') : ''; } catch (e) {}
       if (selection.replace(/\s+/g, '') !== '') {
@@ -1421,8 +1479,11 @@ const FONT_SCRIPT: &str = r##"(function () {
       try {
         // Editable fields keep WebView2's native menu (Paste/undo must work).
         if (isEditableTarget(event.target)) { return; }
+        // Resolve the link HERE: the DOM may mutate between this event and the
+        // click on the menu row, so only the captured string is trustworthy.
+        var link = linkHrefAt(event.target);
         event.preventDefault();
-        openMenu(event.clientX || 0, event.clientY || 0);
+        openMenu(event.clientX || 0, event.clientY || 0, link);
       } catch (e) {}
     }, true);
     window.addEventListener('keydown', function (event) {
@@ -2000,6 +2061,10 @@ mod tests {
         // settings remains reachable even when overrides are disabled.
         assert!(script.contains("isEditableTarget(event.target)"));
         assert!(script.contains("isSettings"));
+        // Copy link row: anchor detection happens at contextmenu time and the
+        // copy itself stays in-page (no new IPC surface).
+        assert!(script.contains("Copy link"));
+        assert!(script.contains("a[href]"));
         // Safety properties: no HTML injection, no eval.
         assert!(!script.contains("innerHTML"));
         assert!(!script.contains("eval("));
