@@ -116,8 +116,10 @@ per-element style assignments (CSP-safe, no `innerHTML`, no eval), and closes
 on Escape, outside mousedown, scroll, resize and window blur.
 
 Rows: Increase/Decrease/Reset font size, Font settings…, then Reload, Back,
-Forward, Home, Open in browser, plus Copy (only with a selection) and Select
-all. Editable targets (`input`, `textarea`, `select`, `contenteditable`) are
+Forward, Home, Open in browser, plus Copy link (only when the right-click hit
+an `a[href]`; resolved and captured as a string at event time, copied fully
+in-page — no IPC), Copy (only with a selection) and Select all. Editable
+targets (`input`, `textarea`, `select`, `contenteditable`) are
 carved out and keep WebView2's own context menu — Paste/Undo must work while
 composing a message.
 
