@@ -2,6 +2,7 @@
 portable-test/
 guitest/
 .zcode/
+.superpowers/
 bzdium-portable/
 branding-src/gen/
 video-work/
