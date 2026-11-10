@@ -1,0 +1,2 @@
+# Shell scripts run inside WSL from /mnt/e; CRLF line endings break bash there.
+*.sh text eol=lf
